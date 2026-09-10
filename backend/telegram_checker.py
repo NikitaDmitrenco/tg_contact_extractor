@@ -243,13 +243,25 @@ class TelegramContactChecker:
         try:
             await client.sign_in(phone=phone_number, code=code, phone_code_hash=code_hash)
             logger.info("Telegram sign in successful!")
-            return True
+            session_str = ""
+            try:
+                session_str = StringSession.save(client.session)
+                if session_str:
+                    logger.info(f"Generated TG_SESSION_STRING: {session_str}")
+            except Exception as e:
+                logger.debug(f"Could not export StringSession: {e}")
+            return session_str or "AUTHORIZED"
         except SessionPasswordNeededError:
             if not password:
                 raise SessionPasswordNeededError("2FA Password is required for this account.")
             await client.sign_in(password=password)
             logger.info("Telegram sign in with 2FA password successful!")
-            return True
+            session_str = ""
+            try:
+                session_str = StringSession.save(client.session)
+            except Exception as e:
+                logger.debug(f"Could not export StringSession: {e}")
+            return session_str or "AUTHORIZED"
         except Exception as e:
             logger.error(f"Sign in failed: {e}")
             raise

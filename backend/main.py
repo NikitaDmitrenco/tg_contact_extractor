@@ -206,8 +206,12 @@ async def send_code(req: SendCodeRequest):
 async def login(req: LoginRequest):
     """Signs in user using code and optional 2FA password."""
     try:
-        await checker.sign_in_with_code(req.phone, req.code, req.password, req.phone_code_hash)
-        return {"success": True, "message": "Successfully authorized with Telegram!"}
+        session_str = await checker.sign_in_with_code(req.phone, req.code, req.password, req.phone_code_hash)
+        return {
+            "success": True,
+            "message": "Successfully authorized with Telegram!",
+            "session_string": session_str if session_str != "AUTHORIZED" else None
+        }
     except SessionPasswordNeededError:
         raise HTTPException(status_code=401, detail="2FA_PASSWORD_REQUIRED")
     except Exception as e:
