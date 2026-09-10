@@ -22,6 +22,8 @@ if not logger.handlers:
 
 # Base directory setup
 BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = BASE_DIR / ".env"
+
 if os.getenv("VERCEL"):
     SESSIONS_DIR = Path("/tmp/sessions")
 else:
@@ -46,10 +48,13 @@ class CriticalTelegramError(Exception):
 
 def load_credentials() -> Tuple[int, str]:
     """
-    Loads and validates API_ID and API_HASH from .env.
+    Loads and validates API_ID and API_HASH from environment variables or .env.
     Never logs full credentials.
     """
-    load_dotenv(dotenv_path=ENV_PATH, override=True)
+    if ENV_PATH.exists():
+        load_dotenv(dotenv_path=ENV_PATH, override=True)
+    else:
+        load_dotenv(override=True)
     
     api_id_str = os.getenv("API_ID", "").strip()
     api_hash = os.getenv("API_HASH", "").strip()

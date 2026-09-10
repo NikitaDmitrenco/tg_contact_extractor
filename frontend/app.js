@@ -52,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
             if (!data.valid) {
                 configAlert.classList.remove("hidden");
-                configAlertText.innerText = data.message;
+                configAlertText.innerText = data.message || data.detail || "Ошибка конфигурации .env";
             } else {
                 configAlert.classList.add("hidden");
             }
