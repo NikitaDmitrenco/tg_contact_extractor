@@ -50,24 +50,19 @@
 
     <!-- Main Checker Interface -->
     <main class="card main-card">
-        <!-- Text / AI Extractor Input Section -->
+        <!-- Text Input & Action Control Section -->
         <section class="section input-methods">
             <div id="aiMethodBox" class="ai-section">
                 <p class="text-muted" style="font-size:0.88rem; margin-bottom:8px;">
-                    Вставьте любой произвольный текст или список контактов. Системы автоматически выявит номера и применит нормализацию для Молдовы (069... ➞ +37369..., 68... ➞ +37368...).
+                    Вставьте любой произвольный текст или список контактов. Система автоматически выявит номера, применит нормализацию для Молдовы (069... ➞ +37369..., 68... ➞ +37368...) и выполнит проверку через Telegram.
                 </p>
                 <textarea id="aiRawText" rows="4" style="width:100%; padding:10px; border-radius:6px; border:1px solid var(--border-color); font-family:inherit; font-size:0.9rem;" placeholder="Вставьте произвольный текст с номерами..."></textarea>
-                <div class="input-group" style="margin-top: 8px;">
-                    <button id="aiExtractBtn" class="btn btn-primary" style="white-space: nowrap;">Извлечь и нормализовать номера</button>
+                <div class="action-section" style="margin-top: 10px; display: flex; gap: 10px;">
+                    <button id="startBtn" class="btn btn-primary">🚀 Извлечь номера и начать проверку</button>
+                    <button id="stopBtn" class="btn btn-danger hidden">Остановить</button>
                 </div>
                 <div id="aiMsg" class="auth-msg" style="margin-top:6px;"></div>
             </div>
-        </section>
-
-        <!-- Action Control Section -->
-        <section class="section action-section">
-            <button id="startBtn" class="btn btn-primary" disabled>Начать проверку</button>
-            <button id="stopBtn" class="btn btn-danger hidden">Остановить</button>
         </section>
 
         <!-- FloodWait Notice -->

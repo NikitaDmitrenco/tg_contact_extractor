@@ -153,74 +153,61 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // 3. AI Text Extraction Handler
+    // 3. Single-Click Extract & Start Check Handler
     const aiRawText = document.getElementById("aiRawText");
-    const aiExtractBtn = document.getElementById("aiExtractBtn");
     const aiMsg = document.getElementById("aiMsg");
 
-    aiExtractBtn.addEventListener("click", async () => {
+    startBtn.addEventListener("click", async () => {
         const text = aiRawText.value.trim();
 
         if (!text) {
-            aiMsg.innerText = "Вставьте текст для обработки.";
+            aiMsg.innerText = "Вставьте текст с номерами в поле ввода.";
             aiMsg.style.color = "var(--danger-color)";
             return;
         }
 
-        aiExtractBtn.disabled = true;
+        startBtn.disabled = true;
         aiMsg.innerText = "Извлечение и нормализация номеров...";
         aiMsg.style.color = "var(--text-muted)";
 
         try {
-            const res = await fetch("/api/ai-extract", {
+            // Step 1: Extract & normalize phone numbers
+            const extractRes = await fetch("/api/ai-extract", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text, openai_key: null })
             });
 
-            const resText = await res.text();
-            let data;
+            const extractText = await extractRes.text();
+            let extractData;
             try {
-                data = JSON.parse(resText);
+                extractData = JSON.parse(extractText);
             } catch {
-                aiMsg.innerText = "Ошибка ответа: " + resText.slice(0, 100);
+                aiMsg.innerText = "Ошибка ответа сервера: " + extractText.slice(0, 100);
                 aiMsg.style.color = "var(--danger-color)";
+                startBtn.disabled = false;
                 return;
             }
 
-            if (res.ok) {
-                isFileLoaded = true;
-                totalCountSpan.innerText = data.count;
-                startBtn.disabled = false;
-                resetTable();
-                aiMsg.innerText = `Успешно извлечено и нормализовано ${data.count} номеров!`;
-                aiMsg.style.color = "var(--success-color)";
-            } else {
-                aiMsg.innerText = data.detail || "Ошибка извлечения номеров.";
+            if (!extractRes.ok) {
+                aiMsg.innerText = extractData.detail || "Ошибка извлечения номеров.";
                 aiMsg.style.color = "var(--danger-color)";
+                startBtn.disabled = false;
+                return;
             }
-        } catch (e) {
-            aiMsg.innerText = "Ошибка сети: " + e.message;
-            aiMsg.style.color = "var(--danger-color)";
-        } finally {
-            aiExtractBtn.disabled = false;
-        }
-    });
 
-    // 4. Start / Stop Checker
-    startBtn.addEventListener("click", async () => {
-        if (!isFileLoaded) return;
+            // Step 2: Start Telegram check process immediately
+            aiMsg.innerText = `Извлечено ${extractData.count} номеров. Запуск проверки...`;
+            aiMsg.style.color = "var(--success-color)";
 
-        try {
-            const res = await fetch("/api/start", {
+            const startRes = await fetch("/api/start", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ batch_size: 20 })
             });
 
-            const data = await res.json();
-            if (res.ok) {
-                startBtn.disabled = true;
+            const startData = await startRes.json();
+            if (startRes.ok) {
                 startBtn.classList.add("hidden");
                 stopBtn.classList.remove("hidden");
                 criticalErrorNotice.classList.add("hidden");
