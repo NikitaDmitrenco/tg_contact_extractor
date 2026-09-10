@@ -110,6 +110,27 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    authPhoneInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            sendCodeBtn.click();
+        }
+    });
+
+    authCodeInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            loginBtn.click();
+        }
+    });
+
+    authPasswordInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            loginBtn.click();
+        }
+    });
+
     loginBtn.addEventListener("click", async () => {
         const phone = authPhoneInput.value.trim();
         const code = authCodeInput.value.trim();
@@ -219,7 +240,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 startPolling();
             } else {
-                alert(data.detail || "Не удалось начать проверку.");
+                alert(startData.detail || "Не удалось начать проверку.");
             }
         } catch (e) {
             alert("Ошибка отправки запроса: " + e.message);
@@ -372,44 +393,31 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/'/g, "&#039;");
     }
 
-    // 6. CSV Export Generator (UTF-8 BOM)
-    downloadBtn.addEventListener("click", () => {
-        if (allResults.length === 0) return;
-
-        const headers = ["phone", "status", "user_id", "username", "birthday", "first_name", "last_name", "error"];
-        const rows = [headers.join(",")];
-
-        allResults.forEach(item => {
-            const row = [
-                formatCsvField(item.phone),
-                formatCsvField(item.status),
-                formatCsvField(item.user_id ? String(item.user_id) : ""),
-                formatCsvField(item.username || ""),
-                formatCsvField(item.birthday || ""),
-                formatCsvField(item.first_name || ""),
-                formatCsvField(item.last_name || ""),
-                formatCsvField(item.error || "")
-            ];
-            rows.push(row.join(","));
-        });
-
-        // Add UTF-8 BOM (\uFEFF) for native Excel UTF-8 support
-        const csvContent = "\uFEFF" + rows.join("\r\n");
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `telegram_check_results_${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    });
-
-    // 7. Excel Export Generator (Columns: Номер телефона, Username, Дата рождения)
+    // 6. Excel Export Generator (Columns: Номер телефона, Username, Дата рождения)
     downloadExcelBtn.addEventListener("click", () => {
-        if (allResults.length === 0) return;
+        let exportItems = allResults;
+
+        // Fallback to DOM table rows if allResults is empty
+        if (!exportItems || exportItems.length === 0) {
+            const trs = document.querySelectorAll("#tableBody tr");
+            exportItems = [];
+            trs.forEach(tr => {
+                if (tr.id === "emptyRow") return;
+                const tds = tr.querySelectorAll("td");
+                if (tds.length >= 5) {
+                    exportItems.push({
+                        phone: tds[0]?.textContent?.trim() || "",
+                        username: tds[3]?.textContent?.trim() || "",
+                        birthday: tds[4]?.textContent?.trim() || ""
+                    });
+                }
+            });
+        }
+
+        if (exportItems.length === 0) {
+            alert("Нет данных для скачивания.");
+            return;
+        }
 
         let xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -425,9 +433,13 @@ document.addEventListener("DOMContentLoaded", () => {
     <Cell><Data ss:Type="String">Дата рождения</Data></Cell>
    </Row>`;
 
-        allResults.forEach(item => {
+        exportItems.forEach(item => {
             const phone = escapeXml(item.phone || "—");
-            const username = escapeXml(item.username ? (item.username.startsWith("@") ? item.username : "@" + item.username) : "—");
+            let usernameVal = item.username || "—";
+            if (usernameVal !== "—" && usernameVal !== "" && !usernameVal.startsWith("@")) {
+                usernameVal = "@" + usernameVal;
+            }
+            const username = escapeXml(usernameVal);
             const birthday = escapeXml(item.birthday || "");
 
             xmlContent += `
@@ -443,7 +455,7 @@ document.addEventListener("DOMContentLoaded", () => {
  </Worksheet>
 </Workbook>`;
 
-        const blob = new Blob([xmlContent], { type: "application/vnd.ms-excel;charset=utf-8" });
+        const blob = new Blob([xmlContent], { type: "application/octet-stream" });
         const url = URL.createObjectURL(blob);
 
         const a = document.createElement("a");
@@ -451,8 +463,10 @@ document.addEventListener("DOMContentLoaded", () => {
         a.download = `telegram_contacts_${new Date().toISOString().slice(0, 10)}.xls`;
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 500);
     });
 
     function escapeXml(str) {
