@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Phone Checker</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="container">
+    <header class="app-header">
+        <h1>Telegram Phone Checker</h1>
+        <p class="subtitle">Локальная проверка телефонных номеров через официальный Telegram API</p>
+    </header>
+
+    <!-- Configuration Alert Banner -->
+    <div id="configAlert" class="alert alert-danger hidden">
+        <strong>Ошибка конфигурации!</strong>
+        <div id="configAlertText">Откройте файл <code>.env</code> и заполните <code>API_ID</code> и <code>API_HASH</code>.</div>
+    </div>
+
+    <!-- Auth Modal / Status Banner -->
+    <div id="authBanner" class="card auth-card hidden">
+        <h3>Авторизация Telegram</h3>
+        <p>Для работы с Telegram API требуется пройти авторизацию аккаунта.</p>
+        
+        <div id="authStep1" class="auth-step">
+            <label for="authPhone">Номер телефона аккаунта Telegram:</label>
+            <div class="input-group">
+                <input type="text" id="authPhone" placeholder="+79991234567">
+                <button id="sendCodeBtn" class="btn btn-primary">Получить код</button>
+            </div>
+        </div>
+
+        <div id="authStep2" class="auth-step hidden">
+            <label for="authCode">Код подтверждения из Telegram:</label>
+            <input type="text" id="authCode" placeholder="12345">
+            
+            <div id="auth2faGroup" class="hidden" style="margin-top: 10px;">
+                <label for="authPassword">Пароль 2FA (двухэтапная аутентификация):</label>
+                <input type="password" id="authPassword" placeholder="Ваш пароль 2FA">
+            </div>
+
+            <button id="loginBtn" class="btn btn-success" style="margin-top: 12px;">Войти в Telegram</button>
+        </div>
+
+        <div id="authMsg" class="auth-msg"></div>
+    </div>
+
+    <!-- Main Checker Interface -->
+    <main class="card main-card">
+        <!-- File Select Section -->
+        <section class="section file-section">
+            <label class="file-label">
+                <input type="file" id="fileInput" accept=".txt,.csv" hidden>
+                <span class="btn btn-secondary">Выбрать файл</span>
+            </label>
+            <span id="fileName" class="file-name-text">Файл не выбран</span>
+            <span id="fileCount" class="badge badge-info hidden">0 номеров</span>
+        </section>
+
+        <!-- Action Control Section -->
+        <section class="section action-section">
+            <button id="startBtn" class="btn btn-primary" disabled>Начать проверку</button>
+            <button id="stopBtn" class="btn btn-danger hidden">Остановить</button>
+            <button id="downloadBtn" class="btn btn-outline" disabled>Скачать CSV</button>
+        </section>
+
+        <!-- FloodWait Notice -->
+        <div id="floodWaitNotice" class="alert alert-warning hidden">
+            ⏳ Telegram API потребовал паузу (FloodWait). Ожидание: <strong id="floodWaitSeconds">0</strong> сек...
+        </div>
+
+        <!-- Critical Error Notice -->
+        <div id="criticalErrorNotice" class="alert alert-danger hidden">
+            <h4 style="margin:0 0 5px 0;">CRITICAL ERROR</h4>
+            <div id="criticalErrorText">Telegram API connection failed. No reliable results were generated.</div>
+        </div>
+
+        <!-- Status Summary & Progress -->
+        <section class="section progress-section">
+            <div class="progress-info">
+                <span class="processed-text">Обработано: <strong id="processedCount">0</strong> / <span id="totalCount">0</span></span>
+            </div>
+            
+            <div class="progress-bar-container">
+                <div id="progressBar" class="progress-bar" style="width: 0%;"></div>
+            </div>
+
+            <div class="badges-row">
+                <span class="badge badge-success">FOUND: <strong id="foundCount">0</strong></span>
+                <span class="badge badge-neutral">NOT FOUND: <strong id="notFoundCount">0</strong></span>
+                <span class="badge badge-danger">ERROR: <strong id="errorCount">0</strong></span>
+            </div>
+        </section>
+
+        <!-- Results Table -->
+        <section class="section table-section">
+            <div class="table-wrapper">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Телефон</th>
+                            <th>Статус</th>
+                            <th style="text-align: right;">User ID</th>
+                            <th>Username</th>
+                            <th>Имя</th>
+                            <th>Фамилия</th>
+                            <th>Ошибка</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr id="emptyRow">
+                            <td colspan="7" class="text-center text-muted">Загрузите файл и нажмите "Начать проверку"</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
