@@ -167,8 +167,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const data = await res.json();
             if (res.ok) {
-                authBanner.classList.add("hidden");
-                if (mainAppCard) mainAppCard.classList.remove("hidden");
+                if (data.session_string) {
+                    const sessionExportBox = document.getElementById("sessionExportBox");
+                    const sessionStringText = document.getElementById("sessionStringText");
+                    const copySessionBtn = document.getElementById("copySessionBtn");
+
+                    if (sessionExportBox && sessionStringText) {
+                        sessionStringText.value = data.session_string;
+                        sessionExportBox.classList.remove("hidden");
+
+                        if (copySessionBtn) {
+                            copySessionBtn.onclick = () => {
+                                navigator.clipboard.writeText(data.session_string);
+                                copySessionBtn.innerText = "✅ Скопировано!";
+                                setTimeout(() => {
+                                    copySessionBtn.innerText = "📋 Скопировать ключ для Vercel Settings";
+                                }, 3000);
+                            };
+                        }
+                    }
+                }
+
+                setTimeout(() => {
+                    authBanner.classList.add("hidden");
+                    if (mainAppCard) mainAppCard.classList.remove("hidden");
+                }, data.session_string ? 3000 : 0);
+
                 showToast("✅ Успешный вход в Telegram!", 5000);
             } else {
                 if (data.detail === "2FA_PASSWORD_REQUIRED") {
