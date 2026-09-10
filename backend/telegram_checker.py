@@ -236,7 +236,7 @@ class TelegramContactChecker:
                 InputPhoneContact(
                     client_id=client_id,
                     phone=phone,
-                    first_name="Check",
+                    first_name="",
                     last_name=""
                 )
             )

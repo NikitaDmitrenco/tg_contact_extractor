@@ -466,7 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
         URL.revokeObjectURL(url);
     });
 
-    // 7. Excel Export Generator (Order: Имя, Фамилия, Номер телефона, Username)
+    // 7. Excel Export Generator (Columns: Номер телефона, Username)
     downloadExcelBtn.addEventListener("click", () => {
         if (allResults.length === 0) return;
 
@@ -479,22 +479,16 @@ document.addEventListener("DOMContentLoaded", () => {
  <Worksheet ss:Name="Контакты Telegram">
   <Table>
    <Row>
-    <Cell><Data ss:Type="String">Имя</Data></Cell>
-    <Cell><Data ss:Type="String">Фамилия</Data></Cell>
     <Cell><Data ss:Type="String">Номер телефона</Data></Cell>
     <Cell><Data ss:Type="String">Username</Data></Cell>
    </Row>`;
 
         allResults.forEach(item => {
-            const firstName = escapeXml(item.first_name || "—");
-            const lastName = escapeXml(item.last_name || "—");
             const phone = escapeXml(item.phone || "—");
             const username = escapeXml(item.username ? (item.username.startsWith("@") ? item.username : "@" + item.username) : "—");
 
             xmlContent += `
    <Row>
-    <Cell><Data ss:Type="String">${firstName}</Data></Cell>
-    <Cell><Data ss:Type="String">${lastName}</Data></Cell>
     <Cell><Data ss:Type="String">${phone}</Data></Cell>
     <Cell><Data ss:Type="String">${username}</Data></Cell>
    </Row>`;
