@@ -265,9 +265,10 @@ class TelegramContactChecker:
             await self.client.disconnect()
             logger.info("Telegram client disconnected.")
 
-    async def check_batch(self, batch_phones: List[str], batch_start_idx: int) -> List[Dict[str, Any]]:
+    async def check_batch(self, batch_items: List[Any], batch_start_idx: int) -> List[Dict[str, Any]]:
         """
-        Executes contacts.ImportContacts for a batch of numbers.
+        Executes contacts.ImportContacts for a batch of contact items (dicts or phone strings).
+        Preserves pre-filled fields from input and selectively fills in missing ones from Telegram.
         """
         client = self.get_client()
         if not client.is_connected():
@@ -277,11 +278,17 @@ class TelegramContactChecker:
             raise CriticalTelegramError("Telegram client is not authorized. Please complete authorization.")
 
         input_contacts = []
-        id_to_phone: Dict[int, str] = {}
+        id_to_item: Dict[int, Dict[str, Any]] = {}
 
-        for idx, phone in enumerate(batch_phones):
+        for idx, item in enumerate(batch_items):
             client_id = batch_start_idx + idx
-            id_to_phone[client_id] = phone
+            if isinstance(item, str):
+                item_dict = {"phone": item, "first_name": "", "last_name": "", "username": "", "birthday": ""}
+            else:
+                item_dict = dict(item)
+
+            phone = item_dict.get("phone", "")
+            id_to_item[client_id] = item_dict
             input_contacts.append(
                 InputPhoneContact(
                     client_id=client_id,
@@ -291,7 +298,7 @@ class TelegramContactChecker:
                 )
             )
 
-        logger.info(f"Executing ImportContacts for batch of {len(batch_phones)} contacts...")
+        logger.info(f"Executing ImportContacts for batch of {len(batch_items)} contacts...")
         
         try:
             response = await client(ImportContactsRequest(contacts=input_contacts))
@@ -301,15 +308,15 @@ class TelegramContactChecker:
         except Exception as e:
             logger.error(f"Batch ImportContacts failed with exception: {e}")
             results = []
-            for phone in batch_phones:
+            for item in id_to_item.values():
                 results.append({
-                    "phone": phone,
+                    "phone": item.get("phone", ""),
                     "status": "ERROR",
                     "user_id": None,
-                    "username": None,
-                    "first_name": None,
-                    "last_name": None,
-                    "birthday": None,
+                    "username": item.get("username", ""),
+                    "first_name": item.get("first_name", ""),
+                    "last_name": item.get("last_name", ""),
+                    "birthday": item.get("birthday", ""),
                     "error": f"Telegram API error: {str(e)}"
                 })
             return results
@@ -328,18 +335,30 @@ class TelegramContactChecker:
                 imported_contacts_to_delete.append(user_obj)
 
         results = []
-        for client_id, phone in id_to_phone.items():
+        for client_id, item_dict in id_to_item.items():
+            phone = item_dict.get("phone", "")
+            input_fn = (item_dict.get("first_name") or "").strip()
+            input_ln = (item_dict.get("last_name") or "").strip()
+            input_un = (item_dict.get("username") or "").strip().lstrip("@")
+            input_bd = (item_dict.get("birthday") or "").strip()
+
             if client_id in found_by_client_id:
                 user = found_by_client_id[client_id]
                 birthday_str = await extract_user_birthday(client, user)
+
+                final_fn = input_fn if input_fn else (user.first_name if user.first_name else "")
+                final_ln = input_ln if input_ln else (user.last_name if user.last_name else "")
+                final_un = input_un if input_un else (user.username if user.username else "")
+                final_bd = input_bd if input_bd else (birthday_str if birthday_str else "")
+
                 results.append({
                     "phone": phone,
                     "status": "FOUND",
                     "user_id": user.id,
-                    "username": user.username if user.username else "—",
-                    "first_name": user.first_name if user.first_name else "—",
-                    "last_name": user.last_name if user.last_name else "—",
-                    "birthday": birthday_str if birthday_str else "",
+                    "username": final_un,
+                    "first_name": final_fn,
+                    "last_name": final_ln,
+                    "birthday": final_bd,
                     "error": None
                 })
             else:
@@ -348,10 +367,10 @@ class TelegramContactChecker:
                     "phone": phone,
                     "status": "NOT_FOUND",
                     "user_id": None,
-                    "username": None,
-                    "first_name": None,
-                    "last_name": None,
-                    "birthday": None,
+                    "username": input_un,
+                    "first_name": input_fn,
+                    "last_name": input_ln,
+                    "birthday": input_bd,
                     "error": "Telegram user was not found for this phone number"
                 })
 

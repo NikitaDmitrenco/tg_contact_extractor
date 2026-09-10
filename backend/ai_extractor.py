@@ -41,31 +41,77 @@ def normalize_moldova_phone(phone_str: str) -> str:
 
     return cleaned
 
-def extract_phones_with_regex(raw_text: str) -> List[str]:
-    """
-    Fallback deterministic phone extractor from raw text.
-    Extracts patterns matching phone numbers and applies Moldova normalization.
-    """
-    # Regex matching phone candidates: optional +, digits, spaces, dashes
-    candidates = re.findall(r'\+?\d[\d\s\-\(\)]{6,14}\d', raw_text)
-    extracted = []
-    seen = set()
+from typing import List, Dict, Optional, Any
 
-    for cand in candidates:
-        # Strip internal spaces, parens, dashes
-        clean = re.sub(r'[\s\-\(\)]', '', cand)
-        normalized = normalize_moldova_phone(clean)
-        digits_only = re.sub(r'\D', '', normalized)
-        
-        if len(digits_only) >= 7 and normalized not in seen:
-            seen.add(normalized)
-            extracted.append(normalized)
+def extract_phones_with_regex(raw_text: str) -> List[Dict[str, str]]:
+    """
+    Fallback deterministic contact extractor from raw text line-by-line.
+    Extracts phone numbers, normalized according to Moldova rules,
+    and captures surrounding text on the same line as first_name and last_name.
+    """
+    extracted = []
+    seen_phones = set()
+
+    lines = raw_text.splitlines()
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Find phone candidates in this line
+        phone_matches = re.finditer(r'\+?\d[\d\s\-\(\)]{6,14}\d', stripped)
+        phone_matches_list = list(phone_matches)
+        if not phone_matches_list:
+            continue
+
+        for match in phone_matches_list:
+            raw_phone = match.group(0)
+            clean_phone = re.sub(r'[\s\-\(\)]', '', raw_phone)
+            normalized = normalize_moldova_phone(clean_phone)
+            digits_only = re.sub(r'\D', '', normalized)
+
+            if len(digits_only) < 7 or normalized in seen_phones:
+                continue
+
+            seen_phones.add(normalized)
+
+            # Get remaining text on line without phone candidate
+            line_without_phone = stripped.replace(raw_phone, " ")
+            # Tokenize words
+            tokens = [t.strip(",;:") for t in line_without_phone.split() if t.strip(",;:")]
+
+            first_name = ""
+            last_name = ""
+            username = ""
+            birthday = ""
+
+            words = []
+            for token in tokens:
+                if token.startswith("@"):
+                    username = token.lstrip("@")
+                elif re.match(r'^\d{2}\.\d{2}(\.\d{4})?$', token):
+                    birthday = token
+                elif re.search(r'[a-zA-Zа-яА-ЯёЁа-яa-z]', token):
+                    words.append(token)
+
+            if len(words) >= 1:
+                first_name = words[0]
+            if len(words) >= 2:
+                last_name = words[1]
+
+            extracted.append({
+                "phone": normalized,
+                "first_name": first_name,
+                "last_name": last_name,
+                "username": username,
+                "birthday": birthday
+            })
 
     return extracted
 
-def extract_and_normalize_phones(raw_text: str, api_key: Optional[str] = None) -> List[str]:
+def extract_and_normalize_phones(raw_text: str, api_key: Optional[str] = None) -> List[Dict[str, str]]:
     """
-    Extracts phone numbers using OpenAI API if key is provided/configured,
+    Extracts structured contact records using OpenAI API if key is provided/configured,
     falling back to regex if key is missing or API fails.
     All extracted numbers are normalized using Moldovan rules.
     """
@@ -79,23 +125,24 @@ def extract_and_normalize_phones(raw_text: str, api_key: Optional[str] = None) -
 
             prompt = (
                 "You are an expert data extraction assistant. "
-                "Extract all phone numbers from the following raw text. "
-                "Return ONLY a JSON array of strings containing the extracted phone numbers. "
-                "Do not include any explanation or markdown wrapping outside the JSON array.\n\n"
+                "Extract all contact records from the following text line by line. "
+                "For each contact, extract: 'phone' (normalized), 'first_name', 'last_name', 'username', 'birthday'. "
+                "If a field is not present in the input line, set its value to empty string ''. "
+                "Return ONLY a JSON array of objects with keys: 'phone', 'first_name', 'last_name', 'username', 'birthday'. "
+                "Do not include markdown outside the JSON.\n\n"
                 f"Raw Text:\n\"\"\"\n{raw_text}\n\"\"\""
             )
 
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You extract phone numbers from text and output JSON arrays."},
+                    {"role": "system", "content": "You extract structured contact records from text and output JSON arrays of objects."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0,
             )
 
             content = response.choices[0].message.content.strip()
-            # Remove ```json ... ``` code fence if present
             content = re.sub(r'^```(?:json)?\s*', '', content)
             content = re.sub(r'\s*```$', '', content)
 
@@ -104,18 +151,25 @@ def extract_and_normalize_phones(raw_text: str, api_key: Optional[str] = None) -
                 ai_extracted = []
                 seen = set()
                 for item in data:
-                    item_str = str(item)
-                    normalized = normalize_moldova_phone(item_str)
+                    if not isinstance(item, dict) or "phone" not in item:
+                        continue
+                    normalized = normalize_moldova_phone(str(item["phone"]))
                     if normalized not in seen:
                         seen.add(normalized)
-                        ai_extracted.append(normalized)
+                        ai_extracted.append({
+                            "phone": normalized,
+                            "first_name": str(item.get("first_name", "") or "").strip(),
+                            "last_name": str(item.get("last_name", "") or "").strip(),
+                            "username": str(item.get("username", "") or "").strip().lstrip("@"),
+                            "birthday": str(item.get("birthday", "") or "").strip()
+                        })
                 if ai_extracted:
-                    logger.info(f"OpenAI successfully extracted {len(ai_extracted)} phone numbers.")
+                    logger.info(f"OpenAI successfully extracted {len(ai_extracted)} structured contact records.")
                     return ai_extracted
 
         except Exception as e:
             logger.warning(f"OpenAI extraction failed, falling back to regex: {e}")
 
     # Fallback to regex extraction
-    logger.info("Using regex phone extraction fallback.")
+    logger.info("Using regex structured contact extraction fallback.")
     return extract_phones_with_regex(raw_text)

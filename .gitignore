@@ -1,6 +1,8 @@
 .env
 *.session
 sessions/
+exports/
+backend/exports/
 __pycache__/
 *.pyc
 .venv/

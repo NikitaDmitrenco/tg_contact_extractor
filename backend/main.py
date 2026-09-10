@@ -39,6 +39,50 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 # Shared Application State
 checker = TelegramContactChecker()
 
+import os
+import openpyxl
+
+# Setup export directory
+if os.getenv("VERCEL"):
+    EXPORTS_DIR = Path("/tmp/exports")
+else:
+    EXPORTS_DIR = BASE_DIR / "backend" / "exports"
+
+try:
+    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    logger.warning(f"Could not create exports dir at {EXPORTS_DIR}: {e}")
+    EXPORTS_DIR = Path("/tmp/exports")
+    EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
+def save_server_excel(file_path: Path, items: List[dict]):
+    """Generates server-side Excel (.xlsx) file with columns: Имя, Фамилия, Номер телефона, Username, Дата рождения."""
+    try:
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Контакты Telegram"
+
+        headers = ["Имя", "Фамилия", "Номер телефона", "Username", "Дата рождения"]
+        ws.append(headers)
+
+        for item in items:
+            fn = (item.get("first_name") or "").strip()
+            ln = (item.get("last_name") or "").strip()
+            phone = (item.get("phone") or "").strip()
+            un = (item.get("username") or "").strip()
+            if un and un != "—" and not un.startswith("@"):
+                un = "@" + un
+            if un == "—":
+                un = ""
+            bd = (item.get("birthday") or "").strip()
+
+            ws.append([fn, ln, phone, un, bd])
+
+        wb.save(file_path)
+        logger.info(f"Saved server-side Excel file with {len(items)} items to {file_path}")
+    except Exception as e:
+        logger.error(f"Failed to save server Excel file: {e}")
+
 class GlobalState:
     def __init__(self):
         self.status = "idle"  # idle, running, completed, critical_error, stopped
@@ -50,14 +94,15 @@ class GlobalState:
         self.flood_wait_seconds = 0
         self.critical_error_msg: Optional[str] = None
         self.results: List[dict] = []
-        self.phones: List[str] = []
+        self.contacts: List[dict] = []
+        self.excel_path: Path = EXPORTS_DIR / "telegram_contacts.xlsx"
         self._cancel_requested = False
         self._task: Optional[asyncio.Task] = None
 
-    def reset(self, phones: List[str]):
+    def reset(self, contacts: List[dict]):
         self.status = "idle"
-        self.phones = phones
-        self.total = len(phones)
+        self.contacts = contacts
+        self.total = len(contacts)
         self.processed = 0
         self.found = 0
         self.not_found = 0
@@ -66,6 +111,20 @@ class GlobalState:
         self.critical_error_msg = None
         self.results = []
         self._cancel_requested = False
+
+        # Initialize server-side Excel file immediately after extraction
+        initial_results = []
+        for c in contacts:
+            initial_results.append({
+                "phone": c.get("phone", ""),
+                "first_name": c.get("first_name", ""),
+                "last_name": c.get("last_name", ""),
+                "username": c.get("username", ""),
+                "birthday": c.get("birthday", ""),
+                "status": "PENDING",
+                "error": None
+            })
+        save_server_excel(self.excel_path, initial_results)
 
 state = GlobalState()
 
@@ -156,41 +215,43 @@ async def upload_file(file: UploadFile = File(...)):
         filename_lower = file.filename.lower() if file.filename else ""
         
         if filename_lower.endswith(".xlsx") or filename_lower.endswith(".xls"):
-            parsed = parse_excel_bytes(content_bytes)
+            phones = parse_excel_bytes(content_bytes)
+            contacts = [{"phone": p, "first_name": "", "last_name": "", "username": "", "birthday": ""} for p in phones]
         else:
             raw_text = content_bytes.decode("utf-8", errors="ignore")
-            parsed = parse_phone_numbers(raw_text)
+            contacts = extract_and_normalize_phones(raw_text)
         
-        if not parsed:
+        if not contacts:
             raise HTTPException(status_code=400, detail="Файл не содержит корректных номеров.")
             
-        state.reset(parsed)
+        state.reset(contacts)
         return {
             "success": True,
             "filename": file.filename,
-            "count": len(parsed),
-            "preview": parsed[:10]
+            "count": len(contacts),
+            "contacts": contacts,
+            "preview": contacts[:10]
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка парсинга файла: {str(e)}")
 
 @app.post("/api/ai-extract")
 async def ai_extract(req: AIExtractRequest):
-    """Extracts phone numbers from arbitrary text and normalizes Moldovan numbers via AI / Regex."""
+    """Extracts structured contact records from text and normalizes Moldovan numbers via AI / Regex."""
     if not req.text or not req.text.strip():
         raise HTTPException(status_code=400, detail="Введите или вставьте текст для обработки.")
 
-    phones = extract_and_normalize_phones(req.text, api_key=req.openai_key)
+    contacts = extract_and_normalize_phones(req.text, api_key=req.openai_key)
     
-    if not phones:
+    if not contacts:
         raise HTTPException(status_code=400, detail="В предоставленном тексте не найдено телефонных номеров.")
 
-    state.reset(phones)
+    state.reset(contacts)
     return {
         "success": True,
-        "count": len(phones),
-        "phones": phones,
-        "preview": phones[:10]
+        "count": len(contacts),
+        "contacts": contacts,
+        "preview": contacts[:10]
     }
 
 async def run_checking_process(batch_size: int = 20):
@@ -213,13 +274,13 @@ async def run_checking_process(batch_size: int = 20):
 
     client_id_counter = 1000
 
-    for i in range(0, len(state.phones), batch_size):
+    for i in range(0, len(state.contacts), batch_size):
         if state._cancel_requested:
             logger.info("Check process cancelled by user.")
             state.status = "stopped"
             return
 
-        batch = state.phones[i : i + batch_size]
+        batch = state.contacts[i : i + batch_size]
         success = False
 
         while not success and not state._cancel_requested:
@@ -238,6 +299,9 @@ async def run_checking_process(batch_size: int = 20):
                     else:
                         state.error += 1
                 
+                # Update server-side Excel file with enriched results
+                save_server_excel(state.excel_path, state.results)
+
                 success = True
                 state.flood_wait_seconds = 0
                 
@@ -277,8 +341,8 @@ async def run_checking_process(batch_size: int = 20):
 @app.post("/api/start")
 async def start_check(req: StartCheckRequest):
     """Initiates phone check background task."""
-    if not state.phones:
-        raise HTTPException(status_code=400, detail="Сначала загрузите файл с номерами.")
+    if not state.contacts:
+        raise HTTPException(status_code=400, detail="Сначала извлеките или загрузите контакты.")
     
     if state.status == "running":
         raise HTTPException(status_code=400, detail="Проверка уже выполняется.")
@@ -312,3 +376,18 @@ async def get_status(offset: int = 0):
         "next_offset": len(state.results),
         "results": new_results
     }
+
+@app.get("/api/download-excel")
+async def download_excel():
+    """Streams server-side Excel file containing final or current results."""
+    if not state.excel_path.exists():
+        if state.results:
+            save_server_excel(state.excel_path, state.results)
+        else:
+            raise HTTPException(status_code=400, detail="Нет данных для скачивания.")
+    
+    return FileResponse(
+        path=state.excel_path,
+        filename="telegram_contacts.xlsx",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
