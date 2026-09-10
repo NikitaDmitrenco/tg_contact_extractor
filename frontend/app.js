@@ -54,6 +54,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 configAlertText.innerText = data.message || data.detail || "Ошибка конфигурации .env";
             } else {
                 configAlert.classList.add("hidden");
+                if (data.default_phone && !authPhoneInput.value) {
+                    authPhoneInput.value = data.default_phone;
+                }
             }
         } catch (e) {
             console.error("Failed to check config:", e);

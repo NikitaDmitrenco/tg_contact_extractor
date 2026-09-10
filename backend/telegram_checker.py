@@ -7,6 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 from telethon.tl.functions.contacts import ImportContactsRequest, DeleteContactsRequest
 from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import InputPhoneContact, User
@@ -86,16 +87,8 @@ import json
 def parse_phone_numbers(raw_content: str) -> List[str]:
     """
     Parses phone numbers from raw text, CSV, or JSON file content.
-    Supports:
-    1. Plain text / CSV separated by ';', ',', or newlines.
-    2. JSON arrays: ["+37369123456", "+37368123456"]
-    3. JSON objects or lists of dicts: [{"phone": "+37369123456"}]
-    4. Strips surrounding whitespace and quotes.
-    5. Deduplicates while preserving order.
     """
     parsed_candidates = []
-
-    # 1. Attempt JSON parsing
     try:
         data = json.loads(raw_content)
         if isinstance(data, list):
@@ -117,7 +110,6 @@ def parse_phone_numbers(raw_content: str) -> List[str]:
     except Exception:
         pass
 
-    # 2. Fallback delimiter parsing if JSON was not applicable
     if not parsed_candidates:
         tokens = re.split(r'[;,\r\n"\'\[\]\{\}\s]+', raw_content)
         parsed_candidates = tokens
@@ -127,7 +119,6 @@ def parse_phone_numbers(raw_content: str) -> List[str]:
 
     for token in parsed_candidates:
         cleaned = str(token).strip()
-        # Ensure token looks like a phone number (at least 7 digits)
         digits_only = re.sub(r'\D', '', cleaned)
         if len(digits_only) >= 7 and cleaned not in seen:
             seen.add(cleaned)
@@ -138,7 +129,6 @@ def parse_phone_numbers(raw_content: str) -> List[str]:
 def parse_excel_bytes(file_bytes: bytes) -> List[str]:
     """
     Parses cell values from Excel (.xlsx / .xls) files and extracts phone numbers.
-    Also applies Moldovan phone number normalization rules.
     """
     raw_cells = []
     try:
@@ -157,12 +147,12 @@ def parse_excel_bytes(file_bytes: bytes) -> List[str]:
 
     full_text = "\n".join(raw_cells)
     from backend.ai_extractor import extract_phones_with_regex
-    return extract_phones_with_regex(full_text)
+    extracted_dicts = extract_phones_with_regex(full_text)
+    return [d["phone"] for d in extracted_dicts if "phone" in d]
 
 async def extract_user_birthday(client: TelegramClient, user_obj: User) -> Optional[str]:
     """
     Fetches full user profile to extract Birthday if visible.
-    Returns formatted date string ('DD.MM.YYYY' or 'DD.MM') or None if not set/hidden.
     """
     try:
         full_res = await client(GetFullUserRequest(user_obj))
@@ -192,12 +182,17 @@ class TelegramContactChecker:
         self.api_id, self.api_hash = load_credentials()
 
     def get_client(self) -> TelegramClient:
-        """Returns or instantiates Telethon client with persistent session file."""
+        """Returns or instantiates Telethon client with persistent session file or StringSession."""
         if not self.api_id or not self.api_hash:
             self.initialize_config()
             
         if self.client is None:
-            self.client = TelegramClient(str(SESSION_FILE), self.api_id, self.api_hash)
+            session_str = os.getenv("TG_SESSION_STRING", "").strip()
+            if session_str:
+                logger.info("Initializing TelegramClient using TG_SESSION_STRING environment variable.")
+                self.client = TelegramClient(StringSession(session_str), self.api_id, self.api_hash)
+            else:
+                self.client = TelegramClient(str(SESSION_FILE), self.api_id, self.api_hash)
         return self.client
 
     async def check_authorization(self) -> bool:

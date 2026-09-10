@@ -162,15 +162,21 @@ async def check_config():
     """Verifies .env file and credentials validity."""
     try:
         checker.initialize_config()
+        default_phone = os.getenv("DEFAULT_TELEGRAM_PHONE", "").strip()
+        has_session_string = bool(os.getenv("TG_SESSION_STRING", "").strip())
         return {
             "valid": True,
             "api_id": checker.api_id,
+            "default_phone": default_phone,
+            "has_session_string": has_session_string,
             "message": "Configuration loaded successfully."
         }
     except ConfigError as e:
         return {
             "valid": False,
             "api_id": None,
+            "default_phone": "",
+            "has_session_string": False,
             "message": str(e)
         }
 
