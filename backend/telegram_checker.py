@@ -188,7 +188,7 @@ class TelegramContactChecker:
             
         if self.client is None:
             session_str = os.getenv("TG_SESSION_STRING", "").strip()
-            if session_str:
+            if session_str and len(session_str) > 10:
                 logger.info("Initializing TelegramClient using TG_SESSION_STRING environment variable.")
                 self.client = TelegramClient(StringSession(session_str), self.api_id, self.api_hash)
             else:
@@ -351,11 +351,28 @@ class TelegramContactChecker:
 
             if client_id in found_by_client_id:
                 user = found_by_client_id[client_id]
+                
+                profile_fn = getattr(user, 'first_name', None) or ""
+                profile_ln = getattr(user, 'last_name', None) or ""
+                profile_un = getattr(user, 'username', None) or ""
+
+                try:
+                    entity = await client.get_entity(user.id)
+                    if entity:
+                        if getattr(entity, 'first_name', None):
+                            profile_fn = entity.first_name
+                        if getattr(entity, 'last_name', None):
+                            profile_ln = entity.last_name
+                        if getattr(entity, 'username', None):
+                            profile_un = entity.username
+                except Exception as e:
+                    logger.debug(f"get_entity fallback failed for user {user.id}: {e}")
+
                 birthday_str = await extract_user_birthday(client, user)
 
-                final_fn = input_fn if input_fn else (user.first_name if user.first_name else "")
-                final_ln = input_ln if input_ln else (user.last_name if user.last_name else "")
-                final_un = input_un if input_un else (user.username if user.username else "")
+                final_fn = input_fn if input_fn else profile_fn
+                final_ln = input_ln if input_ln else profile_ln
+                final_un = input_un if input_un else profile_un
                 final_bd = input_bd if input_bd else (birthday_str if birthday_str else "")
 
                 results.append({
