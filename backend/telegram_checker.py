@@ -134,6 +134,30 @@ def parse_phone_numbers(raw_content: str) -> List[str]:
 
     return parsed
 
+def parse_excel_bytes(file_bytes: bytes) -> List[str]:
+    """
+    Parses cell values from Excel (.xlsx / .xls) files and extracts phone numbers.
+    Also applies Moldovan phone number normalization rules.
+    """
+    raw_cells = []
+    try:
+        import openpyxl
+        from io import BytesIO
+        wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True)
+        for sheet in wb.worksheets:
+            for row in sheet.iter_rows(values_only=True):
+                for val in row:
+                    if val is not None:
+                        raw_cells.append(str(val))
+    except Exception as e:
+        logger.warning(f"openpyxl Excel parsing failed, using fallback string parsing: {e}")
+        raw_text = file_bytes.decode("utf-8", errors="ignore")
+        return parse_phone_numbers(raw_text)
+
+    full_text = "\n".join(raw_cells)
+    from backend.ai_extractor import extract_phones_with_regex
+    return extract_phones_with_regex(full_text)
+
 class TelegramContactChecker:
     def __init__(self):
         self.client: Optional[TelegramClient] = None

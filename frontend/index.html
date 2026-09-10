@@ -53,14 +53,14 @@
         <!-- Mode Switch / Input Section -->
         <section class="section input-methods">
             <div class="method-tabs" style="display: flex; gap: 8px; margin-bottom: 12px;">
-                <button id="tabFileBtn" class="btn btn-secondary active">Загрузить файл (.txt / .csv / .json)</button>
+                <button id="tabFileBtn" class="btn btn-secondary active">Загрузить файл (.xlsx / .txt / .csv / .json)</button>
                 <button id="tabAiBtn" class="btn btn-outline">🤖 AI Извлечение из текста (ChatGPT)</button>
             </div>
 
             <!-- File Upload Box -->
             <div id="fileMethodBox" class="file-section">
                 <label class="file-label">
-                    <input type="file" id="fileInput" accept=".txt,.csv,.json" hidden>
+                    <input type="file" id="fileInput" accept=".xlsx,.xls,.txt,.csv,.json" hidden>
                     <span class="btn btn-secondary">Выбрать файл</span>
                 </label>
                 <span id="fileName" class="file-name-text">Файл не выбран</span>

@@ -13,6 +13,7 @@ from backend.telegram_checker import (
     ConfigError,
     CriticalTelegramError,
     parse_phone_numbers,
+    parse_excel_bytes,
     logger
 )
 from backend.ai_extractor import extract_and_normalize_phones
@@ -148,11 +149,16 @@ async def login(req: LoginRequest):
 
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
-    """Receives uploaded numbers text file and parses unique numbers."""
+    """Receives uploaded numbers text/Excel file and parses unique numbers."""
     try:
         content_bytes = await file.read()
-        raw_text = content_bytes.decode("utf-8", errors="ignore")
-        parsed = parse_phone_numbers(raw_text)
+        filename_lower = file.filename.lower() if file.filename else ""
+        
+        if filename_lower.endswith(".xlsx") or filename_lower.endswith(".xls"):
+            parsed = parse_excel_bytes(content_bytes)
+        else:
+            raw_text = content_bytes.decode("utf-8", errors="ignore")
+            parsed = parse_phone_numbers(raw_text)
         
         if not parsed:
             raise HTTPException(status_code=400, detail="Файл не содержит корректных номеров.")
