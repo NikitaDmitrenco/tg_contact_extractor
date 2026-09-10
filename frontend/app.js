@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
     const downloadExcelBtn = document.getElementById("downloadExcelBtn");
+    const mainAppCard = document.getElementById("mainAppCard");
 
     const floodWaitNotice = document.getElementById("floodWaitNotice");
     const floodWaitSecondsSpan = document.getElementById("floodWaitSeconds");
@@ -65,8 +66,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
             if (!data.authorized) {
                 authBanner.classList.remove("hidden");
+                if (mainAppCard) mainAppCard.classList.add("hidden");
             } else {
                 authBanner.classList.add("hidden");
+                if (mainAppCard) mainAppCard.classList.remove("hidden");
             }
         } catch (e) {
             console.error("Failed to check auth status:", e);
@@ -162,6 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
             if (res.ok) {
                 authBanner.classList.add("hidden");
+                if (mainAppCard) mainAppCard.classList.remove("hidden");
                 showToast("✅ Успешный вход в Telegram!", 5000);
             } else {
                 if (data.detail === "2FA_PASSWORD_REQUIRED") {

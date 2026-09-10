@@ -85,15 +85,23 @@ body {
 }
 
 /* Auth Card */
+.auth-card {
+    max-width: 500px;
+    margin: 30px auto;
+    padding: 24px 28px;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
 .auth-card h3 {
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     margin-bottom: 8px;
 }
 
 .auth-card p {
     font-size: 0.9rem;
     color: var(--text-muted);
-    margin-bottom: 14px;
+    margin-bottom: 16px;
 }
 
 .input-group {
