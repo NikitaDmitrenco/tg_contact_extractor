@@ -3,7 +3,7 @@ import logging
 from typing import List, Optional
 from pathlib import Path
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -18,6 +18,14 @@ from backend.telegram_checker import (
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
 
 app = FastAPI(title="Telegram Phone Checker", version="1.0.0")
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception on {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Ошибка сервера ({exc.__class__.__name__}): {str(exc)}"}
+    )
 
 # Setup paths
 BASE_DIR = Path(__file__).resolve().parent.parent

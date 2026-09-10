@@ -22,9 +22,18 @@ if not logger.handlers:
 
 # Base directory setup
 BASE_DIR = Path(__file__).resolve().parent.parent
-ENV_PATH = BASE_DIR / ".env"
-SESSIONS_DIR = BASE_DIR / "backend" / "sessions"
-SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+if os.getenv("VERCEL"):
+    SESSIONS_DIR = Path("/tmp/sessions")
+else:
+    SESSIONS_DIR = BASE_DIR / "backend" / "sessions"
+
+try:
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    logger.warning(f"Could not create sessions dir at {SESSIONS_DIR}: {e}")
+    SESSIONS_DIR = Path("/tmp/sessions")
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+
 SESSION_FILE = SESSIONS_DIR / "tg_checker_session"
 
 class ConfigError(Exception):
@@ -66,26 +75,58 @@ def load_credentials() -> Tuple[int, str]:
     logger.info(f"Loaded Telegram Credentials: API_ID={api_id}, API_HASH={masked_hash}")
     return api_id, api_hash
 
+import json
+
 def parse_phone_numbers(raw_content: str) -> List[str]:
     """
-    Parses phone numbers from raw text file content.
-    Rules:
-    1. Splits by ';' and newlines.
-    2. Strips surrounding whitespace.
-    3. Removes empty strings.
-    4. Removes duplicates while preserving initial order.
-    5. Preserves original phone formatting.
+    Parses phone numbers from raw text, CSV, or JSON file content.
+    Supports:
+    1. Plain text / CSV separated by ';', ',', or newlines.
+    2. JSON arrays: ["+37369123456", "+37368123456"]
+    3. JSON objects or lists of dicts: [{"phone": "+37369123456"}]
+    4. Strips surrounding whitespace and quotes.
+    5. Deduplicates while preserving order.
     """
-    tokens = re.split(r'[;\r\n]+', raw_content)
+    parsed_candidates = []
+
+    # 1. Attempt JSON parsing
+    try:
+        data = json.loads(raw_content)
+        if isinstance(data, list):
+            for item in data:
+                if isinstance(item, str):
+                    parsed_candidates.append(item)
+                elif isinstance(item, dict):
+                    for val in item.values():
+                        if isinstance(val, (str, int)):
+                            parsed_candidates.append(str(val))
+        elif isinstance(data, dict):
+            for val in data.values():
+                if isinstance(val, str):
+                    parsed_candidates.append(val)
+                elif isinstance(val, list):
+                    for elem in val:
+                        if isinstance(elem, (str, int)):
+                            parsed_candidates.append(str(elem))
+    except Exception:
+        pass
+
+    # 2. Fallback delimiter parsing if JSON was not applicable
+    if not parsed_candidates:
+        tokens = re.split(r'[;,\r\n"\'\[\]\{\}\s]+', raw_content)
+        parsed_candidates = tokens
+
     parsed = []
     seen = set()
-    
-    for token in tokens:
-        cleaned = token.strip()
-        if cleaned and cleaned not in seen:
+
+    for token in parsed_candidates:
+        cleaned = str(token).strip()
+        # Ensure token looks like a phone number (at least 7 digits)
+        digits_only = re.sub(r'\D', '', cleaned)
+        if len(digits_only) >= 7 and cleaned not in seen:
             seen.add(cleaned)
             parsed.append(cleaned)
-            
+
     return parsed
 
 class TelegramContactChecker:

@@ -172,7 +172,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: formData
             });
 
-            const data = await res.json();
+            const text = await res.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (jsonErr) {
+                alert("Ошибка ответа сервера: " + text.slice(0, 150));
+                startBtn.disabled = true;
+                return;
+            }
+
             if (res.ok) {
                 isFileLoaded = true;
                 fileCountBadge.innerText = `${data.count} номеров`;
