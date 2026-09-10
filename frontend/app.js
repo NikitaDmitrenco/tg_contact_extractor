@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
     const downloadBtn = document.getElementById("downloadBtn");
+    const downloadExcelBtn = document.getElementById("downloadExcelBtn");
 
     const floodWaitNotice = document.getElementById("floodWaitNotice");
     const floodWaitSecondsSpan = document.getElementById("floodWaitSeconds");
@@ -371,6 +372,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 nextOffset = data.next_offset;
                 downloadBtn.disabled = false;
+                downloadExcelBtn.disabled = false;
             }
 
             // Handle Terminal States
@@ -463,6 +465,67 @@ document.addEventListener("DOMContentLoaded", () => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
     });
+
+    // 7. Excel Export Generator (Order: Имя, Фамилия, Номер телефона, Username)
+    downloadExcelBtn.addEventListener("click", () => {
+        if (allResults.length === 0) return;
+
+        let xmlContent = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Worksheet ss:Name="Контакты Telegram">
+  <Table>
+   <Row>
+    <Cell><Data ss:Type="String">Имя</Data></Cell>
+    <Cell><Data ss:Type="String">Фамилия</Data></Cell>
+    <Cell><Data ss:Type="String">Номер телефона</Data></Cell>
+    <Cell><Data ss:Type="String">Username</Data></Cell>
+   </Row>`;
+
+        allResults.forEach(item => {
+            const firstName = escapeXml(item.first_name || "—");
+            const lastName = escapeXml(item.last_name || "—");
+            const phone = escapeXml(item.phone || "—");
+            const username = escapeXml(item.username ? (item.username.startsWith("@") ? item.username : "@" + item.username) : "—");
+
+            xmlContent += `
+   <Row>
+    <Cell><Data ss:Type="String">${firstName}</Data></Cell>
+    <Cell><Data ss:Type="String">${lastName}</Data></Cell>
+    <Cell><Data ss:Type="String">${phone}</Data></Cell>
+    <Cell><Data ss:Type="String">${username}</Data></Cell>
+   </Row>`;
+        });
+
+        xmlContent += `
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+        const blob = new Blob([xmlContent], { type: "application/vnd.ms-excel;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `telegram_contacts_${new Date().toISOString().slice(0, 10)}.xls`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+
+    function escapeXml(str) {
+        if (!str) return "";
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&apos;");
+    }
 
     function formatCsvField(field) {
         if (field === null || field === undefined) return '""';
