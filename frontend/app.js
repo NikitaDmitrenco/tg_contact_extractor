@@ -393,7 +393,7 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/'/g, "&#039;");
     }
 
-    // 6. Excel Export Generator (Columns: Номер телефона, Username, Имя, Фамилия, Дата рождения)
+    // 6. Excel Export Generator (Columns: Имя, Фамилия, Номер телефона, Username, Дата рождения)
     downloadExcelBtn.addEventListener("click", () => {
         let exportItems = allResults;
 
@@ -430,10 +430,10 @@ document.addEventListener("DOMContentLoaded", () => {
  <Worksheet ss:Name="Контакты Telegram">
   <Table>
    <Row>
-    <Cell><Data ss:Type="String">Номер телефона</Data></Cell>
-    <Cell><Data ss:Type="String">Username</Data></Cell>
     <Cell><Data ss:Type="String">Имя</Data></Cell>
     <Cell><Data ss:Type="String">Фамилия</Data></Cell>
+    <Cell><Data ss:Type="String">Номер телефона</Data></Cell>
+    <Cell><Data ss:Type="String">Username</Data></Cell>
     <Cell><Data ss:Type="String">Дата рождения</Data></Cell>
    </Row>`;
 
@@ -456,10 +456,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             xmlContent += `
    <Row>
-    <Cell><Data ss:Type="String">${phone}</Data></Cell>
-    <Cell><Data ss:Type="String">${username}</Data></Cell>
     <Cell><Data ss:Type="String">${firstName}</Data></Cell>
     <Cell><Data ss:Type="String">${lastName}</Data></Cell>
+    <Cell><Data ss:Type="String">${phone}</Data></Cell>
+    <Cell><Data ss:Type="String">${username}</Data></Cell>
     <Cell><Data ss:Type="String">${birthday}</Data></Cell>
    </Row>`;
         });
