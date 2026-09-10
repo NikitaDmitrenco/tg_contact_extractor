@@ -13,12 +13,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const loginBtn = document.getElementById("loginBtn");
     const authMsg = document.getElementById("authMsg");
 
-    const fileInput = document.getElementById("fileInput");
-    const fileNameSpan = document.getElementById("fileName");
-    const fileCountBadge = document.getElementById("fileCount");
     const startBtn = document.getElementById("startBtn");
     const stopBtn = document.getElementById("stopBtn");
-    const downloadBtn = document.getElementById("downloadBtn");
     const downloadExcelBtn = document.getElementById("downloadExcelBtn");
 
     const floodWaitNotice = document.getElementById("floodWaitNotice");
@@ -157,76 +153,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // 3. File Upload Handler
-    fileInput.addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        fileNameSpan.innerText = file.name;
-        
-        const formData = new FormData();
-        formData.append("file", file);
-
-        try {
-            const res = await fetch("/api/upload", {
-                method: "POST",
-                body: formData
-            });
-
-            const text = await res.text();
-            let data;
-            try {
-                data = JSON.parse(text);
-            } catch (jsonErr) {
-                alert("Ошибка ответа сервера: " + text.slice(0, 150));
-                startBtn.disabled = true;
-                return;
-            }
-
-            if (res.ok) {
-                isFileLoaded = true;
-                fileCountBadge.innerText = `${data.count} номеров`;
-                fileCountBadge.classList.remove("hidden");
-                totalCountSpan.innerText = data.count;
-                startBtn.disabled = false;
-                resetTable();
-            } else {
-                alert(data.detail || "Ошибка загрузки файла.");
-                startBtn.disabled = true;
-            }
-        } catch (err) {
-            alert("Ошибка сети при загрузке файла: " + err.message);
-            startBtn.disabled = true;
-        }
-    });
-
-    // 3.5 Tab Switching & AI Extraction
-    const tabFileBtn = document.getElementById("tabFileBtn");
-    const tabAiBtn = document.getElementById("tabAiBtn");
-    const fileMethodBox = document.getElementById("fileMethodBox");
-    const aiMethodBox = document.getElementById("aiMethodBox");
+    // 3. AI Text Extraction Handler
     const aiRawText = document.getElementById("aiRawText");
     const openaiKeyInput = document.getElementById("openaiKeyInput");
     const aiExtractBtn = document.getElementById("aiExtractBtn");
     const aiMsg = document.getElementById("aiMsg");
-
-    tabFileBtn.addEventListener("click", () => {
-        tabFileBtn.classList.add("btn-secondary");
-        tabFileBtn.classList.remove("btn-outline");
-        tabAiBtn.classList.add("btn-outline");
-        tabAiBtn.classList.remove("btn-secondary");
-        fileMethodBox.classList.remove("hidden");
-        aiMethodBox.classList.add("hidden");
-    });
-
-    tabAiBtn.addEventListener("click", () => {
-        tabAiBtn.classList.add("btn-secondary");
-        tabAiBtn.classList.remove("btn-outline");
-        tabFileBtn.classList.add("btn-outline");
-        tabFileBtn.classList.remove("btn-secondary");
-        aiMethodBox.classList.remove("hidden");
-        fileMethodBox.classList.add("hidden");
-    });
 
     aiExtractBtn.addEventListener("click", async () => {
         const text = aiRawText.value.trim();
