@@ -393,7 +393,7 @@ document.addEventListener("DOMContentLoaded", () => {
             .replace(/'/g, "&#039;");
     }
 
-    // 6. Excel Export Generator (Columns: Номер телефона, Username, Дата рождения)
+    // 6. Excel Export Generator (Columns: Номер телефона, Username, Имя, Фамилия, Дата рождения)
     downloadExcelBtn.addEventListener("click", () => {
         let exportItems = allResults;
 
@@ -404,11 +404,13 @@ document.addEventListener("DOMContentLoaded", () => {
             trs.forEach(tr => {
                 if (tr.id === "emptyRow") return;
                 const tds = tr.querySelectorAll("td");
-                if (tds.length >= 5) {
+                if (tds.length >= 7) {
                     exportItems.push({
                         phone: tds[0]?.textContent?.trim() || "",
                         username: tds[3]?.textContent?.trim() || "",
-                        birthday: tds[4]?.textContent?.trim() || ""
+                        birthday: tds[4]?.textContent?.trim() || "",
+                        first_name: tds[5]?.textContent?.trim() || "",
+                        last_name: tds[6]?.textContent?.trim() || ""
                     });
                 }
             });
@@ -430,22 +432,34 @@ document.addEventListener("DOMContentLoaded", () => {
    <Row>
     <Cell><Data ss:Type="String">Номер телефона</Data></Cell>
     <Cell><Data ss:Type="String">Username</Data></Cell>
+    <Cell><Data ss:Type="String">Имя</Data></Cell>
+    <Cell><Data ss:Type="String">Фамилия</Data></Cell>
     <Cell><Data ss:Type="String">Дата рождения</Data></Cell>
    </Row>`;
 
         exportItems.forEach(item => {
             const phone = escapeXml(item.phone || "—");
-            let usernameVal = item.username || "—";
-            if (usernameVal !== "—" && usernameVal !== "" && !usernameVal.startsWith("@")) {
+            let usernameVal = item.username || "";
+            if (usernameVal && usernameVal !== "—" && !usernameVal.startsWith("@")) {
                 usernameVal = "@" + usernameVal;
             }
+            if (usernameVal === "—") usernameVal = "";
             const username = escapeXml(usernameVal);
-            const birthday = escapeXml(item.birthday || "");
+            
+            const firstNameVal = (item.first_name && item.first_name !== "—") ? item.first_name : "";
+            const lastNameVal = (item.last_name && item.last_name !== "—") ? item.last_name : "";
+            const firstName = escapeXml(firstNameVal);
+            const lastName = escapeXml(lastNameVal);
+
+            const birthdayVal = (item.birthday && item.birthday !== "—") ? item.birthday : "";
+            const birthday = escapeXml(birthdayVal);
 
             xmlContent += `
    <Row>
     <Cell><Data ss:Type="String">${phone}</Data></Cell>
     <Cell><Data ss:Type="String">${username}</Data></Cell>
+    <Cell><Data ss:Type="String">${firstName}</Data></Cell>
+    <Cell><Data ss:Type="String">${lastName}</Data></Cell>
     <Cell><Data ss:Type="String">${birthday}</Data></Cell>
    </Row>`;
         });
