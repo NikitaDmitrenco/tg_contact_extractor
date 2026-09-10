@@ -199,6 +199,84 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // 3.5 Tab Switching & AI Extraction
+    const tabFileBtn = document.getElementById("tabFileBtn");
+    const tabAiBtn = document.getElementById("tabAiBtn");
+    const fileMethodBox = document.getElementById("fileMethodBox");
+    const aiMethodBox = document.getElementById("aiMethodBox");
+    const aiRawText = document.getElementById("aiRawText");
+    const openaiKeyInput = document.getElementById("openaiKeyInput");
+    const aiExtractBtn = document.getElementById("aiExtractBtn");
+    const aiMsg = document.getElementById("aiMsg");
+
+    tabFileBtn.addEventListener("click", () => {
+        tabFileBtn.classList.add("btn-secondary");
+        tabFileBtn.classList.remove("btn-outline");
+        tabAiBtn.classList.add("btn-outline");
+        tabAiBtn.classList.remove("btn-secondary");
+        fileMethodBox.classList.remove("hidden");
+        aiMethodBox.classList.add("hidden");
+    });
+
+    tabAiBtn.addEventListener("click", () => {
+        tabAiBtn.classList.add("btn-secondary");
+        tabAiBtn.classList.remove("btn-outline");
+        tabFileBtn.classList.add("btn-outline");
+        tabFileBtn.classList.remove("btn-secondary");
+        aiMethodBox.classList.remove("hidden");
+        fileMethodBox.classList.add("hidden");
+    });
+
+    aiExtractBtn.addEventListener("click", async () => {
+        const text = aiRawText.value.trim();
+        const openaiKey = openaiKeyInput.value.trim();
+
+        if (!text) {
+            aiMsg.innerText = "Вставьте текст для обработки.";
+            aiMsg.style.color = "var(--danger-color)";
+            return;
+        }
+
+        aiExtractBtn.disabled = true;
+        aiMsg.innerText = "Извлечение и нормализация номеров...";
+        aiMsg.style.color = "var(--text-muted)";
+
+        try {
+            const res = await fetch("/api/ai-extract", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, openai_key: openaiKey || null })
+            });
+
+            const resText = await res.text();
+            let data;
+            try {
+                data = JSON.parse(resText);
+            } catch {
+                aiMsg.innerText = "Ошибка ответа: " + resText.slice(0, 100);
+                aiMsg.style.color = "var(--danger-color)";
+                return;
+            }
+
+            if (res.ok) {
+                isFileLoaded = true;
+                totalCountSpan.innerText = data.count;
+                startBtn.disabled = false;
+                resetTable();
+                aiMsg.innerText = `Успешно извлечено и нормализовано ${data.count} номеров!`;
+                aiMsg.style.color = "var(--success-color)";
+            } else {
+                aiMsg.innerText = data.detail || "Ошибка извлечения номеров.";
+                aiMsg.style.color = "var(--danger-color)";
+            }
+        } catch (e) {
+            aiMsg.innerText = "Ошибка сети: " + e.message;
+            aiMsg.style.color = "var(--danger-color)";
+        } finally {
+            aiExtractBtn.disabled = false;
+        }
+    });
+
     // 4. Start / Stop Checker
     startBtn.addEventListener("click", async () => {
         if (!isFileLoaded) return;

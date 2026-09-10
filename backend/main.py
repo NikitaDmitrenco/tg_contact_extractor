@@ -15,6 +15,7 @@ from backend.telegram_checker import (
     parse_phone_numbers,
     logger
 )
+from backend.ai_extractor import extract_and_normalize_phones
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
 
 app = FastAPI(title="Telegram Phone Checker", version="1.0.0")
@@ -78,6 +79,10 @@ class LoginRequest(BaseModel):
 
 class StartCheckRequest(BaseModel):
     batch_size: Optional[int] = 20
+
+class AIExtractRequest(BaseModel):
+    text: str
+    openai_key: Optional[str] = None
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -161,6 +166,25 @@ async def upload_file(file: UploadFile = File(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка парсинга файла: {str(e)}")
+
+@app.post("/api/ai-extract")
+async def ai_extract(req: AIExtractRequest):
+    """Extracts phone numbers from arbitrary text and normalizes Moldovan numbers via AI / Regex."""
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="Введите или вставьте текст для обработки.")
+
+    phones = extract_and_normalize_phones(req.text, api_key=req.openai_key)
+    
+    if not phones:
+        raise HTTPException(status_code=400, detail="В предоставленном тексте не найдено телефонных номеров.")
+
+    state.reset(phones)
+    return {
+        "success": True,
+        "count": len(phones),
+        "phones": phones,
+        "preview": phones[:10]
+    }
 
 async def run_checking_process(batch_size: int = 20):
     """Background task running batch checking against Telegram API."""

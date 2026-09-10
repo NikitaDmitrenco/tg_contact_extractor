@@ -50,14 +50,35 @@
 
     <!-- Main Checker Interface -->
     <main class="card main-card">
-        <!-- File Select Section -->
-        <section class="section file-section">
-            <label class="file-label">
-                <input type="file" id="fileInput" accept=".txt,.csv,.json" hidden>
-                <span class="btn btn-secondary">Выбрать файл</span>
-            </label>
-            <span id="fileName" class="file-name-text">Файл не выбран</span>
-            <span id="fileCount" class="badge badge-info hidden">0 номеров</span>
+        <!-- Mode Switch / Input Section -->
+        <section class="section input-methods">
+            <div class="method-tabs" style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <button id="tabFileBtn" class="btn btn-secondary active">Загрузить файл (.txt / .csv / .json)</button>
+                <button id="tabAiBtn" class="btn btn-outline">🤖 AI Извлечение из текста (ChatGPT)</button>
+            </div>
+
+            <!-- File Upload Box -->
+            <div id="fileMethodBox" class="file-section">
+                <label class="file-label">
+                    <input type="file" id="fileInput" accept=".txt,.csv,.json" hidden>
+                    <span class="btn btn-secondary">Выбрать файл</span>
+                </label>
+                <span id="fileName" class="file-name-text">Файл не выбран</span>
+                <span id="fileCount" class="badge badge-info hidden">0 номеров</span>
+            </div>
+
+            <!-- AI Text Extraction Box -->
+            <div id="aiMethodBox" class="ai-section hidden" style="margin-top: 10px;">
+                <p class="text-muted" style="font-size:0.88rem; margin-bottom:8px;">
+                    Вставьте любой произвольный текст. AI автоматический выявит номера и применит нормализацию для Молдовы (069... ➞ +37369..., 68... ➞ +37368...).
+                </p>
+                <textarea id="aiRawText" rows="4" style="width:100%; padding:10px; border-radius:6px; border:1px solid var(--border-color); font-family:inherit; font-size:0.9rem;" placeholder="Вставьте произвольный текст с номерами..."></textarea>
+                <div class="input-group" style="margin-top: 8px;">
+                    <input type="password" id="openaiKeyInput" placeholder="OpenAI API Key (необязательно, если есть в .env)">
+                    <button id="aiExtractBtn" class="btn btn-primary" style="white-space: nowrap;">Извлечь номера через AI</button>
+                </div>
+                <div id="aiMsg" class="auth-msg" style="margin-top:6px;"></div>
+            </div>
         </section>
 
         <!-- Action Control Section -->
