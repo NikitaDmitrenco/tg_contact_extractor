@@ -155,13 +155,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 3. AI Text Extraction Handler
     const aiRawText = document.getElementById("aiRawText");
-    const openaiKeyInput = document.getElementById("openaiKeyInput");
     const aiExtractBtn = document.getElementById("aiExtractBtn");
     const aiMsg = document.getElementById("aiMsg");
 
     aiExtractBtn.addEventListener("click", async () => {
         const text = aiRawText.value.trim();
-        const openaiKey = openaiKeyInput.value.trim();
 
         if (!text) {
             aiMsg.innerText = "Вставьте текст для обработки.";
@@ -177,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch("/api/ai-extract", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, openai_key: openaiKey || null })
+                body: JSON.stringify({ text, openai_key: null })
             });
 
             const resText = await res.text();
