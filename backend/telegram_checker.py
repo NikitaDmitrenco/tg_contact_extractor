@@ -222,17 +222,31 @@ class TelegramContactChecker:
             await client.connect()
         res = await client.send_code_request(phone_number)
         self._phone_code_hash = res.phone_code_hash
+        try:
+            hash_file = SESSIONS_DIR / "tg_code_hash.txt"
+            hash_file.write_text(res.phone_code_hash, encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Could not persist phone_code_hash: {e}")
         logger.info(f"Verification code requested for phone: {phone_number[:4]}***")
         return res.phone_code_hash
 
-    async def sign_in_with_code(self, phone_number: str, code: str, password: Optional[str] = None) -> bool:
+    async def sign_in_with_code(self, phone_number: str, code: str, password: Optional[str] = None, phone_code_hash: Optional[str] = None) -> bool:
         """Completes Telegram authorization using code and optional 2FA password."""
         client = self.get_client()
         if not client.is_connected():
             await client.connect()
 
+        code_hash = phone_code_hash or self._phone_code_hash
+        if not code_hash:
+            try:
+                hash_file = SESSIONS_DIR / "tg_code_hash.txt"
+                if hash_file.exists():
+                    code_hash = hash_file.read_text(encoding="utf-8").strip()
+            except Exception as e:
+                logger.warning(f"Could not read phone_code_hash from file: {e}")
+
         try:
-            await client.sign_in(phone=phone_number, code=code, phone_code_hash=self._phone_code_hash)
+            await client.sign_in(phone=phone_number, code=code, phone_code_hash=code_hash)
             logger.info("Telegram sign in successful!")
             return True
         except SessionPasswordNeededError:

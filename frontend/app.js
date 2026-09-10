@@ -38,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let nextOffset = 0;
     let allResults = [];
     let isFileLoaded = false;
+    let currentPhoneCodeHash = null;
 
     // 1. Initial Checks
     checkConfiguration();
@@ -94,6 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const data = await res.json();
             if (res.ok) {
+                currentPhoneCodeHash = data.phone_code_hash || null;
                 authStep1.classList.add("hidden");
                 authStep2.classList.remove("hidden");
                 authMsg.innerText = "Код отправлен в Telegram.";
@@ -103,7 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 authMsg.style.color = "var(--danger-color)";
             }
         } catch (e) {
-            authMsg.innerText = "Стевой сбой: " + e.message;
+            authMsg.innerText = "Сетевой сбой: " + e.message;
             authMsg.style.color = "var(--danger-color)";
         } finally {
             sendCodeBtn.disabled = false;
@@ -149,7 +151,12 @@ document.addEventListener("DOMContentLoaded", () => {
             const res = await fetch("/api/auth/login", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phone, code, password: password || null })
+                body: JSON.stringify({
+                    phone,
+                    code,
+                    password: password || null,
+                    phone_code_hash: currentPhoneCodeHash
+                })
             });
 
             const data = await res.json();
