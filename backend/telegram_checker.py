@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from telethon import TelegramClient
 from telethon.tl.functions.contacts import ImportContactsRequest, DeleteContactsRequest
+from telethon.tl.functions.users import GetFullUserRequest
 from telethon.tl.types import InputPhoneContact, User
 from telethon.errors import FloodWaitError, ApiIdInvalidError, AuthKeyInvalidError, UserDeactivatedError, SessionPasswordNeededError
 
@@ -158,6 +159,27 @@ def parse_excel_bytes(file_bytes: bytes) -> List[str]:
     from backend.ai_extractor import extract_phones_with_regex
     return extract_phones_with_regex(full_text)
 
+async def extract_user_birthday(client: TelegramClient, user_obj: User) -> Optional[str]:
+    """
+    Fetches full user profile to extract Birthday if visible.
+    Returns formatted date string ('DD.MM.YYYY' or 'DD.MM') or None if not set/hidden.
+    """
+    try:
+        full_res = await client(GetFullUserRequest(user_obj))
+        full_user = getattr(full_res, 'full_user', None)
+        birthday = getattr(full_user, 'birthday', None) if full_user else None
+        if birthday:
+            day = getattr(birthday, 'day', None)
+            month = getattr(birthday, 'month', None)
+            year = getattr(birthday, 'year', None)
+            if day and month:
+                if year:
+                    return f"{day:02d}.{month:02d}.{year}"
+                return f"{day:02d}.{month:02d}"
+    except Exception as e:
+        logger.debug(f"Could not fetch birthday for user {user_obj.id}: {e}")
+    return None
+
 class TelegramContactChecker:
     def __init__(self):
         self.client: Optional[TelegramClient] = None
@@ -232,16 +254,6 @@ class TelegramContactChecker:
     async def check_batch(self, batch_phones: List[str], batch_start_idx: int) -> List[Dict[str, Any]]:
         """
         Executes contacts.ImportContacts for a batch of numbers.
-        Returns list of result objects matching format:
-        {
-          "phone": str,
-          "status": "FOUND" | "NOT_FOUND" | "ERROR",
-          "user_id": int | None,
-          "username": str | None,
-          "first_name": str | None,
-          "last_name": str | None,
-          "error": str | None
-        }
         """
         client = self.get_client()
         if not client.is_connected():
@@ -274,7 +286,6 @@ class TelegramContactChecker:
             raise e
         except Exception as e:
             logger.error(f"Batch ImportContacts failed with exception: {e}")
-            # Return error for all items in batch
             results = []
             for phone in batch_phones:
                 results.append({
@@ -284,6 +295,7 @@ class TelegramContactChecker:
                     "username": None,
                     "first_name": None,
                     "last_name": None,
+                    "birthday": None,
                     "error": f"Telegram API error: {str(e)}"
                 })
             return results
@@ -305,6 +317,7 @@ class TelegramContactChecker:
         for client_id, phone in id_to_phone.items():
             if client_id in found_by_client_id:
                 user = found_by_client_id[client_id]
+                birthday_str = await extract_user_birthday(client, user)
                 results.append({
                     "phone": phone,
                     "status": "FOUND",
@@ -312,6 +325,7 @@ class TelegramContactChecker:
                     "username": user.username if user.username else "—",
                     "first_name": user.first_name if user.first_name else "—",
                     "last_name": user.last_name if user.last_name else "—",
+                    "birthday": birthday_str if birthday_str else "",
                     "error": None
                 })
             else:
@@ -323,6 +337,7 @@ class TelegramContactChecker:
                     "username": None,
                     "first_name": None,
                     "last_name": None,
+                    "birthday": None,
                     "error": "Telegram user was not found for this phone number"
                 })
 

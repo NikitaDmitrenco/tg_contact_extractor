@@ -406,6 +406,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <td><span class="status-tag ${statusClass}">${escapeHtml(formattedStatus)}</span></td>
             <td style="text-align: right;">${item.user_id ? item.user_id : '—'}</td>
             <td>${escapeHtml(item.username || '—')}</td>
+            <td>${escapeHtml(item.birthday || '—')}</td>
             <td>${escapeHtml(item.first_name || '—')}</td>
             <td>${escapeHtml(item.last_name || '—')}</td>
             <td class="text-muted">${escapeHtml(item.error || '—')}</td>
@@ -417,7 +418,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function resetTable() {
         tableBody.innerHTML = `
             <tr id="emptyRow">
-                <td colspan="7" class="text-center text-muted">Ожидание результатов...</td>
+                <td colspan="8" class="text-center text-muted">Ожидание результатов...</td>
             </tr>
         `;
     }
@@ -436,7 +437,7 @@ document.addEventListener("DOMContentLoaded", () => {
     downloadBtn.addEventListener("click", () => {
         if (allResults.length === 0) return;
 
-        const headers = ["phone", "status", "user_id", "username", "first_name", "last_name", "error"];
+        const headers = ["phone", "status", "user_id", "username", "birthday", "first_name", "last_name", "error"];
         const rows = [headers.join(",")];
 
         allResults.forEach(item => {
@@ -445,6 +446,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 formatCsvField(item.status),
                 formatCsvField(item.user_id ? String(item.user_id) : ""),
                 formatCsvField(item.username || ""),
+                formatCsvField(item.birthday || ""),
                 formatCsvField(item.first_name || ""),
                 formatCsvField(item.last_name || ""),
                 formatCsvField(item.error || "")
@@ -466,7 +468,7 @@ document.addEventListener("DOMContentLoaded", () => {
         URL.revokeObjectURL(url);
     });
 
-    // 7. Excel Export Generator (Columns: Номер телефона, Username)
+    // 7. Excel Export Generator (Columns: Номер телефона, Username, Дата рождения)
     downloadExcelBtn.addEventListener("click", () => {
         if (allResults.length === 0) return;
 
@@ -481,16 +483,19 @@ document.addEventListener("DOMContentLoaded", () => {
    <Row>
     <Cell><Data ss:Type="String">Номер телефона</Data></Cell>
     <Cell><Data ss:Type="String">Username</Data></Cell>
+    <Cell><Data ss:Type="String">Дата рождения</Data></Cell>
    </Row>`;
 
         allResults.forEach(item => {
             const phone = escapeXml(item.phone || "—");
             const username = escapeXml(item.username ? (item.username.startsWith("@") ? item.username : "@" + item.username) : "—");
+            const birthday = escapeXml(item.birthday || "");
 
             xmlContent += `
    <Row>
     <Cell><Data ss:Type="String">${phone}</Data></Cell>
     <Cell><Data ss:Type="String">${username}</Data></Cell>
+    <Cell><Data ss:Type="String">${birthday}</Data></Cell>
    </Row>`;
         });
 
