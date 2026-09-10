@@ -134,7 +134,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const data = await res.json();
             if (res.ok) {
                 authBanner.classList.add("hidden");
-                alert("Авторизация прошла успешно!");
+                showToast("✅ Успешный вход в Telegram!", 5000);
             } else {
                 if (data.detail === "2FA_PASSWORD_REQUIRED") {
                     auth2faGroup.classList.remove("hidden");
@@ -279,6 +279,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
             // Append New Results to Table
             if (data.results && data.results.length > 0) {
+                const tableBody = document.getElementById("tableBody");
+                const emptyRow = document.getElementById("emptyRow");
                 if (emptyRow) emptyRow.remove();
 
                 data.results.forEach(item => {
@@ -287,7 +289,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 nextOffset = data.next_offset;
-                downloadBtn.disabled = false;
+            }
+
+            if (allResults.length > 0) {
                 downloadExcelBtn.disabled = false;
             }
 
@@ -304,11 +308,30 @@ document.addEventListener("DOMContentLoaded", () => {
                 stopBtn.classList.add("hidden");
                 startBtn.classList.remove("hidden");
                 startBtn.disabled = false;
+                if (allResults.length > 0) {
+                    downloadExcelBtn.disabled = false;
+                }
             }
 
         } catch (e) {
             console.error("Polling error:", e);
         }
+    }
+
+    // Toast Helper Function
+    let toastTimeout = null;
+    function showToast(message, duration = 5000) {
+        const toast = document.getElementById("toastNotification");
+        const toastText = document.getElementById("toastText");
+        if (!toast || !toastText) return;
+
+        toastText.innerText = message;
+        toast.classList.remove("hidden");
+
+        if (toastTimeout) clearTimeout(toastTimeout);
+        toastTimeout = setTimeout(() => {
+            toast.classList.add("hidden");
+        }, duration);
     }
 
     function appendRow(item) {
