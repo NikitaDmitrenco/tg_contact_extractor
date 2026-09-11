@@ -407,16 +407,24 @@ document.addEventListener("DOMContentLoaded", () => {
             <td>${escapeHtml(item.birthday || '—')}</td>
             <td>${escapeHtml(item.first_name || '—')}</td>
             <td>${escapeHtml(item.last_name || '—')}</td>
+            <td>${renderPhotos(item.photos)}</td>
             <td class="text-muted">${escapeHtml(item.error || '—')}</td>
         `;
 
         tableBody.appendChild(tr);
     }
 
+    function renderPhotos(photos) {
+        if (!photos || photos.length === 0) return '—';
+        return photos
+            .map((url, i) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">фото ${i + 1}</a>`)
+            .join(", ");
+    }
+
     function resetTable() {
         tableBody.innerHTML = `
             <tr id="emptyRow">
-                <td colspan="8" class="text-center text-muted">Ожидание результатов...</td>
+                <td colspan="9" class="text-center text-muted">Ожидание результатов...</td>
             </tr>
         `;
     }

@@ -43,64 +43,73 @@ def normalize_moldova_phone(phone_str: str) -> str:
 
 from typing import List, Dict, Optional, Any
 
+USERNAME_LINK_RE = re.compile(r'(?:https?://)?(?:t(?:elegram)?\.me|telegram\.dog)/(?:s/)?([A-Za-z0-9_]+)/?', re.I)
+USERNAME_AT_RE = re.compile(r'(?<![\w.])@([A-Za-z0-9_]+)\b')
+PHONE_RE = re.compile(r'\+?\d[\d\s\-\(\)]{6,14}\d')
+BIRTHDAY_RE = re.compile(r'^\d{1,2}[.\-/]\d{1,2}(?:[.\-/]\d{2,4})?$')
+
+def extract_username(text: str) -> str:
+    """Returns the first Telegram username found as @name or t.me/name link, without '@'."""
+    def valid(name: str) -> bool:
+        # Telegram usernames are 5-32 chars (4 allowed for legacy names); longer strings are not usernames
+        return 4 <= len(name) <= 32 and name.lower() not in ("joinchat", "addstickers", "share", "proxy")
+    m = USERNAME_LINK_RE.search(text)
+    if m and valid(m.group(1)):
+        return m.group(1)
+    m = USERNAME_AT_RE.search(text)
+    return m.group(1) if m and valid(m.group(1)) else ""
+
 def extract_phones_with_regex(raw_text: str) -> List[Dict[str, str]]:
     """
-    Fallback deterministic contact extractor from raw text line-by-line.
-    Extracts phone numbers, normalized according to Moldova rules,
-    and captures surrounding text on the same line as first_name and last_name.
+    Deterministic contact extractor, line by line.
+    Each line may contain a phone number and/or a Telegram username (@name or t.me/name link);
+    remaining words on the line are treated as first and last name, dd.mm(.yyyy) as birthday.
+    A record needs at least a phone or a username.
     """
     extracted = []
-    seen_phones = set()
+    seen = set()
 
-    lines = raw_text.splitlines()
-    for line in lines:
+    for line in raw_text.splitlines():
         stripped = line.strip()
         if not stripped:
             continue
 
-        # Find phone candidates in this line
-        phone_matches = re.finditer(r'\+?\d[\d\s\-\(\)]{6,14}\d', stripped)
-        phone_matches_list = list(phone_matches)
-        if not phone_matches_list:
+        phone_matches = list(PHONE_RE.finditer(stripped))
+        username = extract_username(stripped)
+        if not phone_matches and not username:
             continue
 
-        for match in phone_matches_list:
-            raw_phone = match.group(0)
-            clean_phone = re.sub(r'[\s\-\(\)]', '', raw_phone)
-            normalized = normalize_moldova_phone(clean_phone)
-            digits_only = re.sub(r'\D', '', normalized)
+        # Remove phones, links and @mentions, then treat the rest as name / birthday tokens
+        rest = PHONE_RE.sub(" ", stripped)
+        rest = USERNAME_LINK_RE.sub(" ", rest)
+        rest = USERNAME_AT_RE.sub(" ", rest)
+        tokens = [t.strip(",;:|") for t in rest.split() if t.strip(",;:|")]
 
-            if len(digits_only) < 7 or normalized in seen_phones:
+        words = []
+        birthday = ""
+        for token in tokens:
+            if BIRTHDAY_RE.match(token):
+                birthday = token
+            elif re.search(r'[A-Za-zА-Яа-яЁё]', token) and not re.match(r'https?:', token, re.I):
+                words.append(token)
+        first_name = words[0] if words else ""
+        last_name = words[1] if len(words) > 1 else ""
+
+        phones = []
+        for m in phone_matches:
+            normalized = normalize_moldova_phone(re.sub(r'[\s\-\(\)]', '', m.group(0)))
+            if len(re.sub(r'\D', '', normalized)) >= 7:
+                phones.append(normalized)
+        if not phones:
+            phones = [""]
+
+        for phone in phones:
+            key = phone or ("@" + username.lower())
+            if key in seen:
                 continue
-
-            seen_phones.add(normalized)
-
-            # Get remaining text on line without phone candidate
-            line_without_phone = stripped.replace(raw_phone, " ")
-            # Tokenize words
-            tokens = [t.strip(",;:") for t in line_without_phone.split() if t.strip(",;:")]
-
-            first_name = ""
-            last_name = ""
-            username = ""
-            birthday = ""
-
-            words = []
-            for token in tokens:
-                if token.startswith("@"):
-                    username = token.lstrip("@")
-                elif re.match(r'^\d{2}\.\d{2}(\.\d{4})?$', token):
-                    birthday = token
-                elif re.search(r'[a-zA-Zа-яА-ЯёЁа-яa-z]', token):
-                    words.append(token)
-
-            if len(words) >= 1:
-                first_name = words[0]
-            if len(words) >= 2:
-                last_name = words[1]
-
+            seen.add(key)
             extracted.append({
-                "phone": normalized,
+                "phone": phone,
                 "first_name": first_name,
                 "last_name": last_name,
                 "username": username,
@@ -124,12 +133,17 @@ def extract_and_normalize_phones(raw_text: str, api_key: Optional[str] = None) -
             client = openai.OpenAI(api_key=key)
 
             prompt = (
-                "You are an expert data extraction assistant. "
-                "Extract all contact records from the following text line by line. "
-                "For each contact, extract: 'phone' (normalized), 'first_name', 'last_name', 'username', 'birthday'. "
-                "If a field is not present in the input line, set its value to empty string ''. "
-                "Return ONLY a JSON array of objects with keys: 'phone', 'first_name', 'last_name', 'username', 'birthday'. "
-                "Do not include markdown outside the JSON.\n\n"
+                "You are an expert data extraction assistant for Telegram contact lookups. "
+                "Extract every contact record from the text below. Records are usually one per line but may be free-form. "
+                "For each contact return an object with keys: 'phone', 'first_name', 'last_name', 'username', 'birthday'.\n"
+                "Rules:\n"
+                "- 'phone': the phone number with all separators removed (keep a leading '+'). Empty string if absent.\n"
+                "- 'username': Telegram username WITHOUT '@'. Take it from '@name' mentions or from profile links such as "
+                "https://t.me/name, t.me/name, telegram.me/name. Empty string if absent.\n"
+                "- 'first_name' / 'last_name': person's given name and surname as written. Empty string if absent.\n"
+                "- 'birthday': date of birth in dd.mm.yyyy (or dd.mm if year unknown). Empty string if absent.\n"
+                "- A record is valid if it has at least a phone OR a username; skip lines with neither.\n"
+                "- Never invent data. Return ONLY a JSON array of objects, no markdown.\n\n"
                 f"Raw Text:\n\"\"\"\n{raw_text}\n\"\"\""
             )
 
@@ -151,16 +165,22 @@ def extract_and_normalize_phones(raw_text: str, api_key: Optional[str] = None) -
                 ai_extracted = []
                 seen = set()
                 for item in data:
-                    if not isinstance(item, dict) or "phone" not in item:
+                    if not isinstance(item, dict):
                         continue
-                    normalized = normalize_moldova_phone(str(item["phone"]))
-                    if normalized not in seen:
-                        seen.add(normalized)
+                    raw_phone = re.sub(r'[\s\-\(\)]', '', str(item.get("phone", "") or ""))
+                    normalized = normalize_moldova_phone(raw_phone) if raw_phone else ""
+                    username = str(item.get("username", "") or "").strip()
+                    username = extract_username(username) or username.lstrip("@")
+                    if not normalized and not username:
+                        continue
+                    key = normalized or ("@" + username.lower())
+                    if key not in seen:
+                        seen.add(key)
                         ai_extracted.append({
                             "phone": normalized,
                             "first_name": str(item.get("first_name", "") or "").strip(),
                             "last_name": str(item.get("last_name", "") or "").strip(),
-                            "username": str(item.get("username", "") or "").strip().lstrip("@"),
+                            "username": username,
                             "birthday": str(item.get("birthday", "") or "").strip()
                         })
                 if ai_extracted:

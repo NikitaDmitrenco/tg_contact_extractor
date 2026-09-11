@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Telegram Phone Checker</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
 
@@ -63,9 +63,9 @@
         <section class="section input-methods">
             <div id="aiMethodBox" class="ai-section">
                 <p class="text-muted" style="font-size:0.88rem; margin-bottom:8px;">
-                    Вставьте любой произвольный текст или список контактов. Система автоматически выявит номера, применит нормализацию для Молдовы (069... ➞ +37369..., 68... ➞ +37368...) и выполнит проверку через Telegram.
+                    Вставьте любой текст или список контактов — по одному в строке. В строке могут быть: имя, фамилия, номер телефона, <code>@username</code> или ссылка <code>t.me/username</code>, дата рождения. Номера нормализуются для Молдовы (069... ➞ +37369...). Поиск идёт по телефону, а если его нет или он скрыт — по username. Для найденных подтягиваются имя, username, дата рождения и все фото профиля.
                 </p>
-                <textarea id="aiRawText" rows="4" style="width:100%; padding:10px; border-radius:6px; border:1px solid var(--border-color); font-family:inherit; font-size:0.9rem;" placeholder="Вставьте произвольный текст с номерами..."></textarea>
+                <textarea id="aiRawText" rows="4" style="width:100%; padding:10px; border-radius:6px; border:1px solid var(--border-color); font-family:inherit; font-size:0.9rem;" placeholder="Ivan Petrov +37369123456&#10;Maria Popescu @maria_pop&#10;Sergiu https://t.me/sergiu_m"></textarea>
                 <div class="action-section" style="margin-top: 10px; display: flex; gap: 10px;">
                     <button id="startBtn" class="btn btn-primary">🚀 Извлечь номера и начать проверку</button>
                     <button id="stopBtn" class="btn btn-danger hidden">Остановить</button>
@@ -115,12 +115,13 @@
                             <th>Дата рождения</th>
                             <th>Имя</th>
                             <th>Фамилия</th>
+                            <th>Фото</th>
                             <th>Ошибка</th>
                         </tr>
                     </thead>
                     <tbody id="tableBody">
                         <tr id="emptyRow">
-                            <td colspan="8" class="text-center text-muted">Загрузите файл и нажмите "Начать проверку"</td>
+                            <td colspan="9" class="text-center text-muted">Вставьте контакты и нажмите "Извлечь номера и начать проверку"</td>
                         </tr>
                     </tbody>
                 </table>
@@ -128,7 +129,7 @@
 
             <!-- Excel Export Button Below Table -->
             <div class="table-footer-actions" style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 10px;">
-                <button id="downloadExcelBtn" class="btn btn-success" disabled>📊 Скачать Excel (Номер телефона, Username, Дата рождения)</button>
+                <button id="downloadExcelBtn" class="btn btn-success" disabled>📊 Скачать Excel (Имя, Фамилия, Телефон, Username, Дата рождения, Фото)</button>
             </div>
         </section>
     <!-- Toast Notification Container -->
@@ -137,6 +138,6 @@
     </div>
 </div>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=3"></script>
 </body>
 </html>

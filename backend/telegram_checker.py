@@ -180,6 +180,7 @@ class TelegramContactChecker:
         self.api_id: Optional[int] = None
         self.api_hash: Optional[str] = None
         self._phone_code_hash: Optional[str] = None
+        self.public_base_url: str = ""
 
     def initialize_config(self):
         """Loads and verifies credentials from .env."""
@@ -284,10 +285,94 @@ class TelegramContactChecker:
             await self.client.disconnect()
             logger.info("Telegram client disconnected.")
 
+    def set_public_base_url(self, url: str):
+        """Base URL used to build absolute /api/photo links (set from the incoming request)."""
+        self.public_base_url = (url or "").rstrip("/")
+
+    def _photo_url(self, user: User, photo_id: int) -> str:
+        return f"{self.public_base_url}/api/photo/{user.id}/{user.access_hash}/{photo_id}"
+
+    async def _resolve_by_username(self, client: TelegramClient, username: str) -> Tuple[Optional[User], str]:
+        """Resolves a public username. Returns (user, "") or (None, reason) when it is missing or not a user."""
+        try:
+            entity = await client.get_entity(username)
+            if isinstance(entity, User):
+                return entity, ""
+            logger.info(f"@{username} resolved to a non-user entity ({type(entity).__name__}), skipping.")
+            return None, f"@{username} is a channel/group, not a user"
+        except FloodWaitError:
+            raise
+        except Exception as e:
+            logger.info(f"Could not resolve @{username}: {e}")
+            return None, f"Username @{username} does not exist"
+
+    async def _enrich_found_user(self, client: TelegramClient, user: User, item_dict: Dict[str, Any], found_via: str) -> Dict[str, Any]:
+        """Builds a FOUND result: input fields win, missing ones are filled from the Telegram profile."""
+        input_fn = (item_dict.get("first_name") or "").strip()
+        input_ln = (item_dict.get("last_name") or "").strip()
+        input_un = (item_dict.get("username") or "").strip().lstrip("@")
+        input_bd = (item_dict.get("birthday") or "").strip()
+
+        profile_fn = getattr(user, 'first_name', None) or ""
+        profile_ln = getattr(user, 'last_name', None) or ""
+        profile_un = getattr(user, 'username', None) or ""
+
+        # Refresh from the entity cache: ImportContacts may return the contact-book name instead of the profile name
+        try:
+            entity = await client.get_entity(user.id)
+            if isinstance(entity, User):
+                profile_fn = entity.first_name or profile_fn
+                profile_ln = entity.last_name or profile_ln
+                profile_un = entity.username or profile_un
+                user = entity
+        except Exception as e:
+            logger.debug(f"get_entity refresh failed for user {user.id}: {e}")
+
+        birthday_str = await extract_user_birthday(client, user)
+
+        photos: List[str] = []
+        try:
+            for photo in await client.get_profile_photos(user):
+                photos.append(self._photo_url(user, photo.id))
+        except FloodWaitError:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not list profile photos for user {user.id}: {e}")
+
+        return {
+            "phone": item_dict.get("phone", ""),
+            "status": "FOUND",
+            "found_via": found_via,
+            "user_id": user.id,
+            "username": input_un or profile_un,
+            "first_name": input_fn or profile_fn,
+            "last_name": input_ln or profile_ln,
+            "birthday": input_bd or birthday_str or "",
+            "photos": photos,
+            "error": None
+        }
+
+    @staticmethod
+    def _not_found_result(item_dict: Dict[str, Any], status: str, error: Optional[str]) -> Dict[str, Any]:
+        return {
+            "phone": item_dict.get("phone", ""),
+            "status": status,
+            "found_via": "",
+            "user_id": None,
+            "username": (item_dict.get("username") or "").strip().lstrip("@"),
+            "first_name": (item_dict.get("first_name") or "").strip(),
+            "last_name": (item_dict.get("last_name") or "").strip(),
+            "birthday": (item_dict.get("birthday") or "").strip(),
+            "photos": [],
+            "error": error
+        }
+
     async def check_batch(self, batch_items: List[Any], batch_start_idx: int) -> List[Dict[str, Any]]:
         """
-        Executes contacts.ImportContacts for a batch of contact items (dicts or phone strings).
-        Preserves pre-filled fields from input and selectively fills in missing ones from Telegram.
+        Looks up a batch of contact items (dicts or phone strings) in Telegram.
+        Items with a phone go through contacts.ImportContacts; items without a phone (or not found by
+        phone) that carry a username are resolved via the public username. Found users are enriched
+        with profile name, username, birthday and profile photo links.
         """
         client = self.get_client()
         if not client.is_connected():
@@ -296,119 +381,66 @@ class TelegramContactChecker:
         if not await client.is_user_authorized():
             raise CriticalTelegramError("Telegram client is not authorized. Please complete authorization.")
 
-        input_contacts = []
         id_to_item: Dict[int, Dict[str, Any]] = {}
-
+        input_contacts = []
         for idx, item in enumerate(batch_items):
             client_id = batch_start_idx + idx
             if isinstance(item, str):
                 item_dict = {"phone": item, "first_name": "", "last_name": "", "username": "", "birthday": ""}
             else:
                 item_dict = dict(item)
-
-            phone = item_dict.get("phone", "")
             id_to_item[client_id] = item_dict
-            input_contacts.append(
-                InputPhoneContact(
-                    client_id=client_id,
-                    phone=phone,
-                    first_name="",
-                    last_name=""
-                )
-            )
+            phone = (item_dict.get("phone") or "").strip()
+            if phone:
+                input_contacts.append(InputPhoneContact(client_id=client_id, phone=phone, first_name="", last_name=""))
 
-        logger.info(f"Executing ImportContacts for batch of {len(batch_items)} contacts...")
-        
-        try:
-            response = await client(ImportContactsRequest(contacts=input_contacts))
-        except FloodWaitError as e:
-            logger.warning(f"Telegram FloodWaitError encountered: Must wait {e.seconds} seconds.")
-            raise e
-        except Exception as e:
-            logger.error(f"Batch ImportContacts failed with exception: {e}")
-            results = []
-            for item in id_to_item.values():
-                results.append({
-                    "phone": item.get("phone", ""),
-                    "status": "ERROR",
-                    "user_id": None,
-                    "username": item.get("username", ""),
-                    "first_name": item.get("first_name", ""),
-                    "last_name": item.get("last_name", ""),
-                    "birthday": item.get("birthday", ""),
-                    "error": f"Telegram API error: {str(e)}"
-                })
-            return results
-
-        # Process returned users
-        users_by_id: Dict[int, User] = {u.id: u for u in response.users if isinstance(u, User)}
-        
-        # Map imported contacts: imported contact holds (client_id, user_id)
         found_by_client_id: Dict[int, User] = {}
-        imported_contacts_to_delete = []
+        imported_contacts_to_delete: List[User] = []
+        retry_ids = set()
 
-        for imp in response.imported:
-            user_obj = users_by_id.get(imp.user_id)
-            if user_obj:
-                found_by_client_id[imp.client_id] = user_obj
-                imported_contacts_to_delete.append(user_obj)
+        if input_contacts:
+            logger.info(f"Executing ImportContacts for {len(input_contacts)} phone(s) in batch of {len(batch_items)}...")
+            try:
+                response = await client(ImportContactsRequest(contacts=input_contacts))
+            except FloodWaitError as e:
+                logger.warning(f"Telegram FloodWaitError encountered: Must wait {e.seconds} seconds.")
+                raise
+            except Exception as e:
+                logger.error(f"Batch ImportContacts failed with exception: {e}")
+                return [self._not_found_result(item, "ERROR", f"Telegram API error: {str(e)}") for item in id_to_item.values()]
+
+            users_by_id: Dict[int, User] = {u.id: u for u in response.users if isinstance(u, User)}
+            for imp in response.imported:
+                user_obj = users_by_id.get(imp.user_id)
+                if user_obj:
+                    found_by_client_id[imp.client_id] = user_obj
+                    imported_contacts_to_delete.append(user_obj)
+            retry_ids = set(getattr(response, "retry_contacts", []) or [])
 
         results = []
         for client_id, item_dict in id_to_item.items():
-            phone = item_dict.get("phone", "")
-            input_fn = (item_dict.get("first_name") or "").strip()
-            input_ln = (item_dict.get("last_name") or "").strip()
-            input_un = (item_dict.get("username") or "").strip().lstrip("@")
-            input_bd = (item_dict.get("birthday") or "").strip()
+            username = (item_dict.get("username") or "").strip().lstrip("@")
+            phone = (item_dict.get("phone") or "").strip()
+            user = found_by_client_id.get(client_id)
+            found_via = "phone" if user else ""
 
-            if client_id in found_by_client_id:
-                user = found_by_client_id[client_id]
-                
-                profile_fn = getattr(user, 'first_name', None) or ""
-                profile_ln = getattr(user, 'last_name', None) or ""
-                profile_un = getattr(user, 'username', None) or ""
+            username_error = ""
+            if user is None and username:
+                user, username_error = await self._resolve_by_username(client, username)
+                found_via = "username" if user else ""
 
-                try:
-                    entity = await client.get_entity(user.id)
-                    if entity:
-                        if getattr(entity, 'first_name', None):
-                            profile_fn = entity.first_name
-                        if getattr(entity, 'last_name', None):
-                            profile_ln = entity.last_name
-                        if getattr(entity, 'username', None):
-                            profile_un = entity.username
-                except Exception as e:
-                    logger.debug(f"get_entity fallback failed for user {user.id}: {e}")
-
-                birthday_str = await extract_user_birthday(client, user)
-
-                final_fn = input_fn if input_fn else profile_fn
-                final_ln = input_ln if input_ln else profile_ln
-                final_un = input_un if input_un else profile_un
-                final_bd = input_bd if input_bd else (birthday_str if birthday_str else "")
-
-                results.append({
-                    "phone": phone,
-                    "status": "FOUND",
-                    "user_id": user.id,
-                    "username": final_un,
-                    "first_name": final_fn,
-                    "last_name": final_ln,
-                    "birthday": final_bd,
-                    "error": None
-                })
+            if user is not None:
+                results.append(await self._enrich_found_user(client, user, item_dict, found_via))
+            elif client_id in retry_ids:
+                results.append(self._not_found_result(item_dict, "ERROR", "Telegram asked to retry this number later (retry_contacts)"))
+            elif phone and username:
+                results.append(self._not_found_result(item_dict, "NOT_FOUND", f"Not found by phone (hidden by privacy or not registered); {username_error}"))
+            elif phone:
+                results.append(self._not_found_result(item_dict, "NOT_FOUND", "Telegram user was not found for this phone number (hidden by privacy or not registered)"))
+            elif username:
+                results.append(self._not_found_result(item_dict, "NOT_FOUND", username_error))
             else:
-                # Successfully checked contact, but user was not found
-                results.append({
-                    "phone": phone,
-                    "status": "NOT_FOUND",
-                    "user_id": None,
-                    "username": input_un,
-                    "first_name": input_fn,
-                    "last_name": input_ln,
-                    "birthday": input_bd,
-                    "error": "Telegram user was not found for this phone number"
-                })
+                results.append(self._not_found_result(item_dict, "ERROR", "No phone or username to search by"))
 
         # Cleanup imported contacts from address book to avoid polluting contact list
         if imported_contacts_to_delete:

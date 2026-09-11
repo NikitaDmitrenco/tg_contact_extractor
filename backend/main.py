@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from pydantic import BaseModel
 
 from backend.telegram_checker import (
@@ -18,6 +18,7 @@ from backend.telegram_checker import (
     logger
 )
 from telethon.sessions import StringSession
+from telethon.tl.types import InputPeerUser
 from backend.ai_extractor import extract_and_normalize_phones
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
 
@@ -58,13 +59,13 @@ except Exception as e:
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def save_server_excel(file_path: Path, items: List[dict]):
-    """Generates server-side Excel (.xlsx) file with columns: Имя, Фамилия, Номер телефона, Username, Дата рождения."""
+    """Generates server-side Excel (.xlsx) file with columns: Имя, Фамилия, Номер телефона, Username, Дата рождения, Фото профиля (links joined by ';')."""
     try:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Контакты Telegram"
 
-        headers = ["Имя", "Фамилия", "Номер телефона", "Username", "Дата рождения"]
+        headers = ["Имя", "Фамилия", "Номер телефона", "Username", "Дата рождения", "Фото профиля"]
         ws.append(headers)
 
         for item in items:
@@ -77,8 +78,9 @@ def save_server_excel(file_path: Path, items: List[dict]):
             if un == "—":
                 un = ""
             bd = (item.get("birthday") or "").strip()
+            photos = ";".join(item.get("photos") or [])
 
-            ws.append([fn, ln, phone, un, bd])
+            ws.append([fn, ln, phone, un, bd, photos])
 
         wb.save(file_path)
         logger.info(f"Saved server-side Excel file with {len(items)} items to {file_path}")
@@ -123,6 +125,7 @@ class GlobalState:
                 "last_name": c.get("last_name", ""),
                 "username": c.get("username", ""),
                 "birthday": c.get("birthday", ""),
+                "photos": [],
                 "status": "PENDING",
                 "error": None
             })
@@ -267,7 +270,7 @@ async def ai_extract(req: AIExtractRequest):
     contacts = extract_and_normalize_phones(req.text, api_key=req.openai_key)
     
     if not contacts:
-        raise HTTPException(status_code=400, detail="В предоставленном тексте не найдено телефонных номеров.")
+        raise HTTPException(status_code=400, detail="В тексте не найдено ни телефонных номеров, ни Telegram username / ссылок t.me.")
 
     state.reset(contacts)
     return {
@@ -361,11 +364,19 @@ async def run_checking_process(batch_size: int = 20):
         state.status = "completed"
         logger.info("Phone checking process completed successfully.")
 
+def public_base_url(request: Request) -> str:
+    """Absolute origin of this deployment as seen by the client (honours proxy headers on Vercel)."""
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}"
+
 @app.post("/api/start")
-async def start_check(req: StartCheckRequest):
+async def start_check(req: StartCheckRequest, request: Request):
     """Initiates phone check background task."""
     if not state.contacts:
         raise HTTPException(status_code=400, detail="Сначала извлеките или загрузите контакты.")
+
+    checker.set_public_base_url(public_base_url(request))
     
     if state.status == "running":
         raise HTTPException(status_code=400, detail="Проверка уже выполняется.")
@@ -414,3 +425,33 @@ async def download_excel():
         filename="telegram_contacts.xlsx",
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+@app.get("/api/photo/{user_id}/{access_hash}/{photo_id}")
+async def get_profile_photo(user_id: int, access_hash: str, photo_id: int):
+    """Streams one profile photo of a found user through the authorized Telegram session."""
+    try:
+        access_hash = int(access_hash)  # signed int64, may be negative — FastAPI's int path converter rejects '-'
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid access_hash.")
+    client = checker.get_client()
+    if not client.is_connected():
+        await client.connect()
+    if not await client.is_user_authorized():
+        raise HTTPException(status_code=503, detail="Telegram session is not authorized.")
+
+    try:
+        peer = InputPeerUser(user_id=user_id, access_hash=access_hash)
+        photos = await client.get_profile_photos(peer)
+        photo = next((ph for ph in photos if ph.id == photo_id), None)
+        if photo is None:
+            raise HTTPException(status_code=404, detail="Photo not found (it may have been deleted).")
+        data = await client.download_media(photo, bytes)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Failed to fetch profile photo {photo_id} of user {user_id}: {e}")
+        raise HTTPException(status_code=502, detail=f"Telegram error: {e}")
+
+    if not data:
+        raise HTTPException(status_code=404, detail="Empty photo.")
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
