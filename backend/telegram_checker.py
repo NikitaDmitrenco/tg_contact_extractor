@@ -187,11 +187,19 @@ class TelegramContactChecker:
             self.initialize_config()
             
         if self.client is None:
-            session_str = os.getenv("TG_SESSION_STRING", "").strip()
-            if session_str and len(session_str) > 10:
-                logger.info("Initializing TelegramClient using TG_SESSION_STRING environment variable.")
-                self.client = TelegramClient(StringSession(session_str), self.api_id, self.api_hash)
-            else:
+            # Tolerate quotes, spaces and line breaks introduced by copy-pasting the key.
+            session_str = re.sub(r'''[\s"']+''', '', os.getenv("TG_SESSION_STRING", ""))
+            if session_str:
+                # A real StringSession is a long base64 blob (~350 chars); anything else is a misconfiguration.
+                try:
+                    if len(session_str) < 100:
+                        raise ValueError("value is too short to be a Telethon StringSession")
+                    session = StringSession(session_str)
+                    logger.info("Initializing TelegramClient using TG_SESSION_STRING environment variable.")
+                    self.client = TelegramClient(session, self.api_id, self.api_hash)
+                except Exception as e:
+                    logger.warning(f"TG_SESSION_STRING is invalid ({e}); falling back to session file {SESSION_FILE}")
+            if self.client is None:
                 self.client = TelegramClient(str(SESSION_FILE), self.api_id, self.api_hash)
         return self.client
 
@@ -247,7 +255,7 @@ class TelegramContactChecker:
             try:
                 session_str = StringSession.save(client.session)
                 if session_str:
-                    logger.info(f"Generated TG_SESSION_STRING: {session_str}")
+                    logger.info("Generated TG_SESSION_STRING (shown in UI, not logged).")
             except Exception as e:
                 logger.debug(f"Could not export StringSession: {e}")
             return session_str or "AUTHORIZED"
