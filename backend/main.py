@@ -14,8 +14,10 @@ from backend.telegram_checker import (
     CriticalTelegramError,
     parse_phone_numbers,
     parse_excel_bytes,
+    clean_session_string,
     logger
 )
+from telethon.sessions import StringSession
 from backend.ai_extractor import extract_and_normalize_phones
 from telethon.errors import FloodWaitError, SessionPasswordNeededError
 
@@ -163,12 +165,23 @@ async def check_config():
     try:
         checker.initialize_config()
         default_phone = os.getenv("DEFAULT_TELEGRAM_PHONE", "").strip()
-        has_session_string = bool(os.getenv("TG_SESSION_STRING", "").strip())
+        session_str = clean_session_string(os.getenv("TG_SESSION_STRING", ""))
+        session_valid = False
+        if session_str:
+            try:
+                StringSession(session_str)
+                session_valid = len(session_str) >= 100
+            except Exception:
+                session_valid = False
         return {
             "valid": True,
             "api_id": checker.api_id,
             "default_phone": default_phone,
-            "has_session_string": has_session_string,
+            "has_session_string": bool(session_str),
+            # Diagnostics for deployments: lets us tell "key missing" from "key truncated/revoked".
+            "session_string_len": len(session_str),
+            "session_string_tail": session_str[-4:] if session_str else "",
+            "session_string_valid": session_valid,
             "message": "Configuration loaded successfully."
         }
     except ConfigError as e:

@@ -40,6 +40,10 @@ except Exception as e:
 
 SESSION_FILE = SESSIONS_DIR / "tg_checker_session"
 
+def clean_session_string(raw: str) -> str:
+    """Strips quotes, spaces and line breaks introduced by copy-pasting a StringSession key."""
+    return re.sub(r'''[\s"']+''', '', raw or "")
+
 class ConfigError(Exception):
     """Raised when .env configuration is missing or invalid."""
     pass
@@ -188,7 +192,7 @@ class TelegramContactChecker:
             
         if self.client is None:
             # Tolerate quotes, spaces and line breaks introduced by copy-pasting the key.
-            session_str = re.sub(r'''[\s"']+''', '', os.getenv("TG_SESSION_STRING", ""))
+            session_str = clean_session_string(os.getenv("TG_SESSION_STRING", ""))
             if session_str:
                 # A real StringSession is a long base64 blob (~350 chars); anything else is a misconfiguration.
                 try:
